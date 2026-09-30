@@ -1,4 +1,7 @@
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { getAgentDir, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+import { ChangeTracker, type ChangeOutcome } from "./src/changes.ts";
 import { ACTIVITY_ENTRY, ActivityProjection, installActivityUI } from "./src/activity.ts";
 import { createDisplayTools } from "./src/tools.ts";
 import { getDisplayStyle, refreshDisplayRows, resetDisplayState, setDisplayStyle, type DisplayStyle } from "./src/state.ts";
@@ -6,8 +9,10 @@ import { getDisplayStyle, refreshDisplayRows, resetDisplayState, setDisplayStyle
 const styles: DisplayStyle[] = ["aggregate", "tidy", "claude"];
 const labels: Record<DisplayStyle, string> = { aggregate: "聚合风格（aggregate）", tidy: "项目一风格（tidy）", claude: "项目三风格（claude）" };
 export default function compactToolExtension(pi: ExtensionAPI): void {
-  for (const tool of createDisplayTools(() => pi.getSettings())) pi.registerTool(tool);
+  const changes = new ChangeTracker();
+  for (const tool of createDisplayTools(() => pi.getSettings(), changes)) pi.registerTool(tool);
   const activity = new ActivityProjection();
+  let outcome: ChangeOutcome = "completed";
   let releaseUI: (() => void) | undefined;
   let persistedFinal: string | undefined;
   const interactive = (ctx: ExtensionContext) => ctx.hasUI && ctx.mode === "tui";
@@ -40,8 +45,30 @@ export default function compactToolExtension(pi: ExtensionAPI): void {
     },
   });
 
+  pi.registerCommand("changes", {
+    description: "Open the latest Edit / Write net changes in your browser",
+    async handler(_args, ctx) {
+      if (!interactive(ctx)) return;
+      await ctx.waitForIdle();
+      const path = changes.latestPage;
+      if (!path) {
+        ctx.ui.notify("No change report in this session yet.", "info");
+        return;
+      }
+      try {
+        const command = process.platform === "darwin" ? "open" : process.platform === "win32" ? "rundll32" : "xdg-open";
+        const args = process.platform === "win32" ? ["url.dll,FileProtocolHandler", pathToFileURL(path).href] : [path];
+        const result = await pi.exec(command, args, { timeout: 10000 });
+        if (result.code !== 0) throw new Error(result.stderr || `Exit code ${result.code}`);
+      } catch {
+        ctx.ui.notify(`Open change report: ${pathToFileURL(path).href}`, "warning");
+      }
+    },
+  });
+
   pi.on("session_start", (_event, ctx) => {
     releaseUI?.(); releaseUI = undefined; persistedFinal = undefined;
+    changes.reset(); activity.clearChanges(); outcome = "completed";
     const flag = pi.getFlag("compact-style");
     resetDisplayState(styles.includes(flag as DisplayStyle) ? flag as DisplayStyle : "aggregate");
     if (!interactive(ctx)) return;
@@ -53,7 +80,12 @@ export default function compactToolExtension(pi: ExtensionAPI): void {
     if (!styles.includes(flag as DisplayStyle)) ctx.ui.notify("compact-style 只支持 aggregate、tidy 或 claude，已使用 aggregate。", "warning");
   });
   pi.on("agent_start", (_event, ctx) => {
-    if (interactive(ctx)) activity.agentStarted(Date.now());
+    if (!interactive(ctx)) return;
+    changes.start(ctx.cwd, Date.now());
+    activity.agentStarted(Date.now());
+  });
+  pi.on("agent_before_settle", (event, ctx) => {
+    if (interactive(ctx)) outcome = event.outcome;
   });
   pi.on("agent_end", (event, ctx) => {
     if (!interactive(ctx)) return;
@@ -62,6 +94,10 @@ export default function compactToolExtension(pi: ExtensionAPI): void {
   pi.on("message_end", (event, ctx) => {
     if (!interactive(ctx)) return;
     activity.ingest(event.message);
+    if (event.message.role === "user") {
+      changes.start(ctx.cwd, event.message.timestamp ?? Date.now());
+      changes.userMessage(event.message);
+    }
     if (event.message.role === "assistant") activity.completed(event.message, Date.now());
   });
   pi.on("tool_execution_start", (event, ctx) => {
@@ -72,9 +108,23 @@ export default function compactToolExtension(pi: ExtensionAPI): void {
     if (!interactive(ctx) || event.parentToolCallId) return;
     activity.ended(event.toolCallId, Date.now(), event.toolName === "bash" ? event.result : undefined);
   });
-  pi.on("agent_settled", (_event, ctx) => {
+  pi.on("agent_settled", async (_event, ctx) => {
     if (!interactive(ctx)) return;
     const timing = activity.timingRecord();
+    try {
+      const report = await changes.finish(Date.now(), outcome);
+      if (report) {
+        if (report.files.length) {
+          const path = await changes.save(report, join(getAgentDir(), "extension-data", "pi-compact-tool", "changes"));
+          if (timing.finalKey) activity.setChanges(timing.finalKey, { label: "View changes", url: pathToFileURL(path).href });
+        } else if (timing.finalKey) activity.setChanges(timing.finalKey, { label: "No net changes" });
+        refreshDisplayRows();
+      }
+    } catch (error) {
+      if (timing.finalKey) activity.setChanges(timing.finalKey, { label: "Changes unavailable" });
+      ctx.ui.notify(`Could not save change report: ${error instanceof Error ? error.message : String(error)}`, "warning");
+    }
+    outcome = "completed";
     if (timing.finalKey && timing.finalKey !== persistedFinal && timing.calls.length) {
       // Non-context custom data makes observed parallel/serial dispatch and wall time
       // survive reload without adding model-visible messages or altering tool results.
@@ -86,6 +136,7 @@ export default function compactToolExtension(pi: ExtensionAPI): void {
   pi.on("session_compact", (_event, ctx) => rebuild(ctx));
   pi.on("session_shutdown", () => {
     releaseUI?.(); releaseUI = undefined;
+    changes.reset(); activity.clearChanges();
     resetDisplayState();
   });
 }

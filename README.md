@@ -9,7 +9,7 @@ Switch between three tool display styles in Pi's TUI. Inspired by `pi-tidy-tools
 - **claude**: `● Read(path)`, `● Bash(command)` and indented result summaries.
 - In fullscreen mode, left-click a tool's title or text result to expand/collapse that row.
 - Switching styles preserves row expansion, refreshes existing rows, and never re-executes a tool or requires reload.
-- Expanded Edit uses Pi's native diff. Write shows supplied content. No custom side-by-side diff, pending previews, or reads of previous file contents.
+- Expanded tool rows stay native: Edit uses Pi's diff and Write shows supplied content. Separately, `View changes` opens a whole-task net diff with file navigation, split/unified layouts and line wrapping.
 - Images retain Pi's native rendering and do not follow text expansion.
 - Aggregate Bash always shows received text line counts, including failures and empty output. Failed tool names and targets turn red without error text; counts and other summary suffixes stay muted. Expand for the full error. Tidy/Claude keep their original error summaries.
 
@@ -47,6 +47,24 @@ pi -ne -e ./index.ts --tui-mode fullscreen --compact-style tidy
 ```
 
 `/compact` remains Pi's context-compaction command. `Ctrl+O` remains Pi's global expansion action; per-row fullscreen clicking is this extension's main interaction. Regular terminal-scrollback mode does not provide the same mouse interaction.
+
+## View task changes
+
+In TUI sessions, Edit / Write save the first pre-write snapshot of each touched file. Once the entire agent run settles, the extension reads only those files again and generates a self-contained HTML report. Repeated edits become one net diff; files restored to their original state are omitted. No repository scan or Git baseline is used. Official tools still own path resolution, edit semantics and the per-file mutation queue; capture runs inside their filesystem operation hooks without changing tool results or model context.
+
+Aggregate's first statistics line adds **View changes** after the tool counts. Narrow terminals truncate the counts first and preserve the link; extremely narrow rows shorten its label to **Changes**. The date line is unchanged. Link opening depends on the terminal's OSC 8 support (regular mode may require Ctrl/Command-click). In any display style, use:
+
+```text
+/changes             Open the latest generated report from this session
+```
+
+The command waits for the active task to settle before opening the system browser. If browser launch fails, it prints the report's file URL.
+
+Reports include the complete user message text in a collapsed **User message** section, any additional user messages observed in the same run, start/end times, completion state, net file counts and line totals. The left file list shows Added / Modified / Deleted / Unavailable and follows the current reading position. **Auto** chooses Split when the diff area is at least 900 px wide, otherwise Unified; **Split** and **Unified** override that choice. Switching layouts preserves the current file. **Wrap lines** folds long code lines. At narrow widths the file list opens through **Files**. Page colors follow the browser/system light or dark preference.
+
+The report covers **files touched by this extension's Edit / Write tools**, including nested calls through those definitions. Bash-only files and other tools are not tracked. Final changes to already tracked files can include formatting, external edits or deletion. Interrupted/error runs retain the changes already made. Binary/invalid UTF-8 files, failed snapshots and files above 1 MiB are listed as Unavailable rather than treated as empty; initial snapshots have a 16 MiB task budget. Their unknown line counts are excluded from the totals.
+
+HTML reports are saved below `getAgentDir()/extension-data/pi-compact-tool/changes/` (normally `~/.pi/agent/extension-data/pi-compact-tool/changes/`). They contain inline diff2html assets and need neither a server nor network access. Only HTML is retained; source snapshots are released after settlement. Links and the latest-report association are kept in memory for the current session/runtime; reload/session replacement does not restore them. Existing HTML files remain usable and are not automatically removed. Runs observed before this feature was loaded cannot be reconstructed. If all observed files return to their original state, the first line shows **No net changes** and no new report is generated.
 
 ## Grouping and statistics
 
@@ -108,8 +126,9 @@ This version does not include whole-Run collapse, a separate detail popup, model
 npm install --ignore-scripts --legacy-peer-deps
 npm run check
 npm run test:tui  # requires expect, python3 and pi
+npm run test:changes-ui  # requires ego-browser; saves HTML, results and screenshots outside the worktree
 ```
 
 Development requires Pi's host packages and `typebox` to resolve locally. Validation on this machine uses symlinks to the existing Pi installation, without installing a second Pi copy.
 
-See [polish validation](./checks/polish-validation.md) for spacing refinements, automatic custom adapters, 42 tests and real fullscreen checks. The earlier unified-panel implementation is recorded in [thinking validation](./checks/thinking-validation.md). Earlier parallel headings are recorded in [layout validation](./checks/parallel-heading-validation.md). Earlier background and padding changes are recorded in [visual fix validation](./checks/visual-fix-validation.md). The [first aggregate validation](./checks/aggregate-validation.md) is retained. The [original validation notes](./checks/project-3-validation.md) are retained for the previous per-tool implementation. Licensed under [MIT](./LICENSE).
+See [changes validation](./checks/changes-validation.md) for net-diff tests and browser checks. See [polish validation](./checks/polish-validation.md) for spacing refinements, automatic custom adapters, 42 tests and real fullscreen checks. The earlier unified-panel implementation is recorded in [thinking validation](./checks/thinking-validation.md). Earlier parallel headings are recorded in [layout validation](./checks/parallel-heading-validation.md). Earlier background and padding changes are recorded in [visual fix validation](./checks/visual-fix-validation.md). The [first aggregate validation](./checks/aggregate-validation.md) is retained. The [original validation notes](./checks/project-3-validation.md) are retained for the previous per-tool implementation. Licensed under [MIT](./LICENSE).

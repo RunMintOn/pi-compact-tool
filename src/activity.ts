@@ -1,5 +1,5 @@
 import { AssistantMessageComponent, ToolExecutionComponent, sessionEntryToContextMessages, type Theme } from "@earendil-works/pi-coding-agent";
-import { MouseRegion, Spacer, truncateToWidth, type Component, type TuiMouseEvent } from "@earendil-works/pi-tui";
+import { hyperlink, MouseRegion, Spacer, truncateToWidth, type Component, type TuiMouseEvent } from "@earendil-works/pi-tui";
 import { getDisplayStyle } from "./state.ts";
 import { adaptCustomTool } from "./custom-tools.ts";
 import { lineCount, panelLine, parallelLabel, SummaryLine, toolLabel } from "./render-utils.ts";
@@ -12,7 +12,9 @@ interface Call { id: string; name: string; }
 interface Batch { ids: string[]; observed: boolean; }
 interface ToolRegion { ids: string[]; }
 interface Timing { start?: number; end?: number; parallel: boolean; lines?: number; }
+export interface ChangeLink { label: string; url?: string; }
 export interface ActivitySummary {
+  changes?: ChangeLink;
   calls: number;
   turns: number;
   counts: Map<string, number>;
@@ -48,6 +50,7 @@ export class ActivityProjection {
   private currentRegion?: ToolRegion;
   private timings = new Map<string, Timing>();
   private summaries = new Map<string, Request>();
+  private changes = new Map<string, ChangeLink>();
   private seen = new Set<string>();
   private current?: Request;
   private agentStartMs: number | null = null;
@@ -199,9 +202,12 @@ export class ActivityProjection {
     const request = this.summaries.get(key(message));
     if (request) request.end = now;
   }
+  setChanges(finalKey: string, link: ChangeLink): void { this.changes.set(finalKey, link); }
+  clearChanges(): void { this.changes.clear(); }
   summaryFor(message: Message): ActivitySummary | undefined {
-    const request = this.summaries.get(key(message));
-    return request?.calls ? request : undefined;
+    const messageKey = key(message);
+    const request = this.summaries.get(messageKey);
+    return request?.calls ? { ...request, changes: this.changes.get(messageKey) } : undefined;
   }
   timingRecord(): TimingRecord {
     const request = this.current;
@@ -247,7 +253,11 @@ export function renderActivitySummary(summary: ActivitySummary, theme: Theme, wi
   const date = summary.end !== undefined ? theme.fg("muted", `· ${clock(summary.end)}`) : "";
   const contentWidth = Math.max(1, width - outputPad * 2);
   const stats = new SummaryLine(theme.fg("muted", parts.join(" · ")), date).render(contentWidth)[0] ?? "";
-  return ["", ...[heading, stats].map(text => truncateToWidth(" ".repeat(outputPad) + truncateToWidth(text, contentWidth, "…"), width, "…"))];
+  const change = summary.changes;
+  const label = change?.url && contentWidth < 12 ? "Changes" : change?.label ?? "";
+  const suffix = change?.url ? hyperlink(theme.fg("accent", label), change.url) : theme.fg("muted", label);
+  const first = new SummaryLine(heading, suffix).render(contentWidth)[0] ?? "";
+  return ["", ...[first, stats].map(text => truncateToWidth(" ".repeat(outputPad) + truncateToWidth(text, contentWidth, "…"), width, "…"))];
 }
 
 const sharedKey = Symbol.for("pi-compact-tool.activity-ui.v1");

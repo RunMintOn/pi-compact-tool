@@ -9,7 +9,7 @@
 - **claude**：`● Read(path)`、`● Bash(command)` 和缩进结果摘要。
 - Fullscreen 左键点击工具标题或文字结果，只展开／收起这一条。
 - 三套风格共享展开状态。切换不重新执行工具，也不需要 `/reload`。
-- Edit 展开使用 Pi 官方 diff；Write 展开显示新内容。没有自定义左右 diff、执行前预览或旧文件预读取。
+- 工具行展开仍使用原生内容：Edit 显示 Pi 官方 diff，Write 显示写入内容。另有 `View changes` 打开整轮净 diff 页面，支持文件导航、单／双栏和长行折行。
 - 图片继续由 Pi 原生图片层显示，不随文字展开／收起。
 - aggregate 的 Bash 成功、失败均显示文字结果行数；无输出显示 `0 lines`。失败时工具名和目标变红，行数等摘要保持浅灰色，收起时不显示错误正文，展开查看完整错误。tidy / claude 保持原错误摘要。
 
@@ -47,6 +47,24 @@ pi -ne -e ./index.ts --tui-mode fullscreen --compact-style tidy
 ```
 
 `/compact` 是 Pi 的上下文压缩命令，本项目不占用它。`Ctrl+O` 仍是 Pi 的全局展开操作，本项目的主要交互是 fullscreen 单条点击。普通终端滚动模式不提供同样的点击交互。
+
+## 查看本轮修改
+
+在 TUI 会话里，Edit / Write 第一次真正写入某个文件前保存起点快照。整轮任务完全结束后，只读取这些文件的最终内容，生成独立 HTML 页面。同一文件多次编辑合并成一份净 diff；恢复原样的文件不计入净修改。不扫描仓库，不使用 Git HEAD 作为基准。路径解析、编辑规则和文件写入队列仍由官方工具处理；快照通过官方文件操作接口记录，不改变工具结果或模型上下文。
+
+aggregate 统计第一行在工具枚举后显示 **View changes**。宽度不足时先省略左侧统计，保留链接；极窄时链接缩短为 **Changes**。第二行日期规则不变。链接打开方式取决于终端的 OSC 8 支持，普通模式可能需要 Ctrl／Command 点击。所有展示风格都可以使用：
+
+```text
+/changes             打开当前会话最近生成的修改页面
+```
+
+命令会等待正在执行的任务完全结束，再用系统浏览器打开页面。打开失败时显示页面的文件链接。
+
+页面包含可折叠的完整 **User message** 文本，以及同一轮内观察到的追加用户消息、起止时间、完成／中止／错误状态、净修改文件数和增删行数。左侧文件目录显示 Added / Modified / Deleted / Unavailable，并随阅读位置高亮当前文件。**Auto** 按 diff 区域宽度自动选择布局：至少 900 px 时双栏，否则单栏；**Split** 和 **Unified** 手动指定布局。切换布局保留当前文件位置。**Wrap lines** 让长行折行。窄窗口通过 **Files** 打开文件目录。页面自动跟随系统／浏览器明暗主题。
+
+范围是**本插件 Edit / Write 涉及的文件**，包含通过这些工具定义执行的嵌套调用。仅由 Bash 或其他工具修改的文件不记录；已记录文件的终点可能包含后续格式化、外部编辑或删除。中止／错误后已经发生的修改仍可查看。二进制或无效 UTF-8 文件、读取失败、超过 1 MiB 的文件标为 Unavailable，不误显示为新增文件；整轮起点快照预算为 16 MiB。无法比较的文件不计入已知增删行数。
+
+页面保存在 `getAgentDir()/extension-data/pi-compact-tool/changes/`，通常为 `~/.pi/agent/extension-data/pi-compact-tool/changes/`。diff2html 的脚本和样式内嵌，不需要服务器或联网。仅保存 HTML，结算后释放源文件快照。链接关联和最近页面路径只保存在当前会话／运行的内存中；reload 或切换会话后不恢复。已有 HTML 仍可手动打开，不自动清理。功能加载前的轮次无法补造完整 diff。如果所有文件恢复原样，第一行显示 **No net changes**，不生成新页面。
 
 ## 分组与统计
 
@@ -109,8 +127,9 @@ pi.registerTool(decorateTool(existingSearchTool, {
 npm install --ignore-scripts --legacy-peer-deps
 npm run check
 npm run test:tui  # 需要 expect、python3 和 pi
+npm run test:changes-ui  # 需要 ego-browser，HTML、结果和截图保存在 worktree 外
 ```
 
 开发环境需让本项目能解析 Pi 宿主包和 `typebox`。本机验证使用已有 Pi 安装的软链接，未另外安装一份 Pi。
 
-当前布局细调、自定义工具接入、42 项测试与真实 fullscreen 检查见 [本轮验证记录](./checks/polish-validation.md)。此前 Think 融合见 [Think 验证记录](./checks/thinking-validation.md)。此前左对齐与分组标题见 [布局验证记录](./checks/parallel-heading-validation.md)。此前底色与留白修复见 [视觉修复记录](./checks/visual-fix-validation.md)。第一版聚合实现保留在 [聚合验证记录](./checks/aggregate-validation.md)。原逐条版本的验证保留在 [历史验证记录](./checks/project-3-validation.md)。MIT 许可证见 [LICENSE](./LICENSE)。
+本轮净 diff 测试和浏览器检查见 [修改查看验证](./checks/changes-validation.md)。当前布局细调、自定义工具接入、42 项测试与真实 fullscreen 检查见 [本轮验证记录](./checks/polish-validation.md)。此前 Think 融合见 [Think 验证记录](./checks/thinking-validation.md)。此前左对齐与分组标题见 [布局验证记录](./checks/parallel-heading-validation.md)。此前底色与留白修复见 [视觉修复记录](./checks/visual-fix-validation.md)。第一版聚合实现保留在 [聚合验证记录](./checks/aggregate-validation.md)。原逐条版本的验证保留在 [历史验证记录](./checks/project-3-validation.md)。MIT 许可证见 [LICENSE](./LICENSE)。
