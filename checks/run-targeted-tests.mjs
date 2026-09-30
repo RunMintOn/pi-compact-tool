@@ -1,0 +1,11 @@
+import { createRequire } from 'node:module';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+const host = '/Users/ziqian/.local/share/pi-node/node-v22.23.2-darwin-arm64/lib/node_modules/@earendil-works/pi-coding-agent';
+const require = createRequire(host + '/package.json');
+const { createJiti } = require('jiti');
+process.env.PI_CODING_AGENT_DIR = mkdtempSync(join(tmpdir(), 'pi-reference-2-agent-'));
+const aliases = { '@earendil-works/pi-coding-agent': host + '/dist/index.js', '@earendil-works/pi-tui': host + '/node_modules/@earendil-works/pi-tui/dist/index.js', typebox: require.resolve('typebox') };
+const jiti = createJiti(import.meta.url, { alias: aliases });
+for (const path of process.argv.slice(2)) await jiti.import(path);

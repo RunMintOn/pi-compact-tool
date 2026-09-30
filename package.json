@@ -1,0 +1,30 @@
+{
+  "name": "pi-compact-tool",
+  "version": "0.1.0",
+  "description": "Compact parallel tool records and request statistics for Pi, with switchable tidy/Claude styles and official execution.",
+  "type": "module",
+  "license": "MIT",
+  "keywords": ["pi-package", "pi-extension", "tool-rendering"],
+  "pi": { "extensions": ["./index.ts"] },
+  "exports": {
+    ".": "./index.ts",
+    "./display": "./src/display.ts"
+  },
+  "files": ["index.ts", "src", "README.md", "README.zh-CN.md", "LICENSE"],
+  "scripts": {
+    "test": "node scripts/run-tests.mjs",
+    "test:tui": "node scripts/check-tui.mjs",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run typecheck && npm test"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": ">=0.99.1 <1",
+    "@earendil-works/pi-tui": ">=0.99.1 <1",
+    "typebox": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.22.4",
+    "typescript": "^5.9.3"
+  }
+}

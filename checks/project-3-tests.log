@@ -1,0 +1,40 @@
+
+> pi-compact-tool@0.1.0 check
+> npm run typecheck && npm test
+
+
+> pi-compact-tool@0.1.0 typecheck
+> tsc --noEmit
+
+
+> pi-compact-tool@0.1.0 test
+> node scripts/run-tests.mjs
+
+✔ decorating a custom tool changes only rendering properties (0.905084ms)
+✔ custom execute exceptions keep their identity (0.286541ms)
+✔ tidy Bash keeps first output and inline remaining count (2.25125ms)
+✔ Claude style uses a target call and summary without intent fields (9.472791ms)
+✔ errors remain visible in both styles and never become success summaries (7.017833ms)
+✔ expanded Edit uses returned diff, not filesystem previews (1.614417ms)
+✔ expanded Write displays supplied content without reading the path (0.313167ms)
+✔ width-aware summaries fit narrow terminals, Chinese, emoji and tabs (1.0715ms)
+✔ custom adapters format target and summary without touching parameters or results (0.183125ms)
+✔ switching styles invalidates existing rows without altering their expansion (0.197959ms)
+✔ the real Pi tool component supports per-row click and live style switching (1.668542ms)
+✔ multiline commands stay on one collapsed row (0.121958ms)
+✔ native image protocol output is preserved across both styles and expansion states (1.512167ms)
+✔ partial results remain renderable, and truncated output is disclosed (0.211333ms)
+✔ actual Pi session loads the extension, retains active tools and switches existing rows without a model call (197.988625ms)
+✔ built-in metadata matches official definitions and does not auto-enable extra tools (1.272209ms)
+✔ Write, multiple Edit blocks and Read delegate to official tools in the actual context cwd (20.022584ms)
+✔ Bash respects effective shell prefix settings and forwards streaming updates (8.228125ms)
+✔ official cancellation and Read failures are not swallowed (0.965541ms)
+✔ Read preserves image data and forwards model context (2.151583ms)
+ℹ tests 20
+ℹ suites 0
+ℹ pass 20
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1309.640417

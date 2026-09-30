@@ -1,0 +1,49 @@
+
+> pi-compact-tool@0.1.0 check
+> npm run typecheck && npm test
+
+
+> pi-compact-tool@0.1.0 typecheck
+> tsc --noEmit
+
+
+> pi-compact-tool@0.1.0 test
+> node scripts/run-tests.mjs
+
+✔ parallel groups follow tool-call messages, not thinking boundaries; summary follows final answer (1.030625ms)
+✔ live execution events override inferred multi-call grouping for sequential execution (0.248541ms)
+✔ history rebuild restores sequential dispatch and precise timing, and request summaries remain separate (0.199667ms)
+✔ aggregate summaries and tool rows fit narrow widths and reserve the date and Bash count (20.832ms)
+✔ aggregate Bash always has line count, including failure, empty output and truncation (0.77675ms)
+✔ real Bash output counts exclude native empty-output and exit-status notices, including replay (29.391917ms)
+✔ aggregate failed Edit hides error text and success stats, expanded view retains full error (0.988209ms)
+✔ real Pi aggregate rows remove spacing, preserve per-row click and thinking interaction, and restore patches (10.791792ms)
+✔ aggregate keeps native images rather than hiding them in grouping (1.3485ms)
+✔ decorating a custom tool changes only rendering properties (0.975416ms)
+✔ custom execute exceptions keep their identity (0.315875ms)
+✔ tidy Bash keeps first output and inline remaining count (2.40725ms)
+✔ Claude style uses a target call and summary without intent fields (10.081667ms)
+✔ errors remain visible in both styles and never become success summaries (7.632917ms)
+✔ expanded Edit uses returned diff, not filesystem previews (1.683708ms)
+✔ expanded Write displays supplied content without reading the path (0.296ms)
+✔ width-aware summaries fit narrow terminals, Chinese, emoji and tabs (1.044083ms)
+✔ custom adapters format target and summary without touching parameters or results (0.198666ms)
+✔ switching styles invalidates existing rows without altering their expansion (0.21175ms)
+✔ the real Pi tool component supports per-row click and live style switching (1.537666ms)
+✔ multiline commands stay on one collapsed row (0.273458ms)
+✔ native image protocol output is preserved across both styles and expansion states (1.604125ms)
+✔ partial results remain renderable, and truncated output is disclosed (0.218083ms)
+✔ actual Pi session loads the extension, retains active tools and switches existing rows without a model call (94.331625ms)
+✔ built-in metadata matches official definitions and does not auto-enable extra tools (1.412417ms)
+✔ Write, multiple Edit blocks and Read delegate to official tools in the actual context cwd (19.395292ms)
+✔ Bash respects effective shell prefix settings and forwards streaming updates (9.660459ms)
+✔ official cancellation and Read failures are not swallowed (1.112417ms)
+✔ Read preserves image data and forwards model context (10.600292ms)
+ℹ tests 29
+ℹ suites 0
+ℹ pass 29
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1307.397041

@@ -1,0 +1,8 @@
+read content blocks: [{"type":"text","text":"Read image file [image/png]"},{"type":"image","mimeType":"image/png","dataLength":28248}]
+PASS read.execute returns image content for actual PNG input
+read failure mode=hidden: []
+read failure mode=summary: ["  ⎿ loaded 1 line • Ctrl+O to expand                                                                                  "]
+read failure mode=preview: ["  ⎿ ENOENT: no such file or directory, missing.txt                                                                      "]
+PASS bash schema requires displaySummary
+edit schema keys: path, edits
+probe cwd: /var/folders/zh/qf_nccyd0_b0fc84rk8dl4lm0000gp/T/pi-reference-2-probe-H1i9XO

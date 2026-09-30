@@ -1,0 +1,85 @@
+#!/usr/bin/expect -f
+set timeout 25
+if {$argc != 5} {
+  puts stderr "Usage: expect scripts/tui-smoke.exp CWD AGENT_DIR SESSION EXTENSION LOG"
+  exit 2
+}
+lassign $argv cwd agent_dir session extension log
+set row_helper [file join [file dirname [file normalize [info script]]] find-tool-row.py]
+match_max 1000000
+log_user 0
+log_file -a -noappend $log
+cd $cwd
+spawn -noecho env TERM=xterm-256color TERM_PROGRAM= PI_CODING_AGENT_DIR=$agent_dir PI_OFFLINE=1 pi --offline --no-extensions --no-skills --no-context-files --no-prompt-templates --no-themes --tui-mode fullscreen --session $session --extension $extension
+stty rows 60 columns 100 < $spawn_out(slave,name)
+expect {
+  -re {6 calls} {}
+  -re {Extension Error|Failed to load extension} { puts stderr "Extension failed to load"; exit 1 }
+  timeout { puts stderr "Startup did not render recorded tools"; exit 1 }
+  eof { puts stderr "Pi exited before startup"; exit 1 }
+}
+expect -timeout 3 { -re {.+} { exp_continue } timeout {} }
+log_file
+puts [exec python3 [file join [file dirname [file normalize [info script]]] check-aggregate-screen.py] $log]
+set row [exec python3 $row_helper $log]
+log_file -a $log
+send -- "\033\[<0;4;${row}M\033\[<0;4;${row}m"
+expect {
+  -re {third +\x1b} {}
+  timeout { puts stderr "Click did not expand Bash output"; exit 1 }
+}
+after 500
+send -- "/tool-style tidy\r"
+expect {
+  -re {项目一风格} {}
+  timeout { puts stderr "Tidy switch did not render"; exit 1 }
+  eof { puts stderr "Pi exited before switching"; exit 1 }
+}
+after 500
+send -- "/tool-style claude\r"
+expect {
+  -re {项目三风格} {}
+  timeout { puts stderr "Claude switch did not render"; exit 1 }
+}
+expect -timeout 2 { -re {.+} { exp_continue } timeout {} }
+log_file
+set row [exec python3 $row_helper $log]
+log_file -a $log
+send -- "\033\[<0;4;${row}M\033\[<0;4;${row}m"
+expect {
+  -re {3 lines returned} {}
+  timeout { puts stderr "Click did not collapse Bash after switching styles"; exit 1 }
+}
+after 500
+send -- "/tool-style aggregate\r"
+expect {
+  -re {聚合风格} {}
+  timeout { puts stderr "Aggregate switch did not render"; exit 1 }
+}
+expect -timeout 2 { -re {.+} { exp_continue } timeout {} }
+log_file
+set row [exec python3 $row_helper $log]
+log_file -a $log
+send -- "\033\[<0;4;${row}M\033\[<0;4;${row}m"
+expect {
+  -re {third +\x1b} {}
+  timeout { puts stderr "Aggregate click did not expand Bash"; exit 1 }
+}
+after 500
+send -- "/reload\r"
+expect {
+  -re {Reloaded keybindings} {}
+  timeout { puts stderr "Reload did not finish"; exit 1 }
+}
+expect -timeout 3 { -re {.+} { exp_continue } timeout {} }
+log_file
+puts [exec python3 [file join [file dirname [file normalize [info script]]] check-aggregate-screen.py] $log]
+log_file -a $log
+send -- "\004"
+expect {
+  eof {}
+  timeout { puts stderr "Pi did not exit"; exit 1 }
+}
+set result [wait]
+if {[lindex $result 3] != 0} { puts stderr "Pi exited with [lindex $result 3]"; exit 1 }
+puts "PASS real Pi fullscreen aggregate startup, per-row click expansion/collapse, tidy/claude/aggregate switching, reload restoration, and clean exit (no model request)"

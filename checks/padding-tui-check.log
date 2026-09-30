@@ -1,0 +1,8 @@
+
+> pi-compact-tool@0.1.0 test:tui
+> node scripts/check-tui.mjs
+
+PASS compact serial rows, aligned parallel gutters, colored top/bottom padding, hidden error text, and dated summary after final answer
+PASS compact serial rows, aligned parallel gutters, colored top/bottom padding, hidden error text, and dated summary after final answer
+PASS real Pi fullscreen aggregate startup, per-row click expansion/collapse, tidy/claude/aggregate switching, reload restoration, and clean exit (no model request)
+TUI log: /var/folders/zh/qf_nccyd0_b0fc84rk8dl4lm0000gp/T/pi-compact-tui-results-7ZcN1C/fullscreen.ansi.log

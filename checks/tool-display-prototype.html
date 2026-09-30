@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>工具聚合展示 · 静态样稿</title>
+<style>
+  /* Throwaway prototype: request-level statistics, native thinking disclosure,
+     and a left gutter marking same-message multi-tool groups (not measured concurrency).
+     All contents and statistics are fixed samples, not live Pi data. */
+  :root {
+    color-scheme: dark;
+    --page: #201f1a;
+    --panel: #28332b;
+    --text: #dddcd4;
+    --muted: #959b91;
+    --read: #93c2b3;
+    --edit: #b59bd5;
+    --bash: #7dbfa6;
+    --error: #ee9990;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--page);
+    color: var(--text);
+    font: 16px/1.55 ui-monospace, "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+    -webkit-font-smoothing: antialiased;
+  }
+  main { max-width: 1220px; margin: 38px auto; padding: 0 24px 64px; }
+  .prototype-note { margin: 0 0 28px; color: var(--muted); font: 12px/1.5 system-ui, sans-serif; }
+  .message { margin: 0 12px 22px; }
+  .assistant { color: #b8b9ae; }
+  .activity { background: var(--panel); padding: 8px 14px; margin-bottom: 12px; }
+  .overview { background: var(--panel); padding: 10px 14px; margin-bottom: 14px; }
+  .thinking { margin: 12px 14px; color: var(--muted); }
+  .thinking summary { cursor: pointer; font-style: italic; }
+  .thinking p { margin: 6px 0 6px 2ch; max-width: 90ch; font-size: 14px; }
+  .timeline { padding-left: 2ch; position: relative; }
+  .timeline.grouped::before { content: ""; position: absolute; left: 0.5ch; top: 2px; bottom: 2px; border-left: 1px solid #758779; }
+  .heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 18px; }
+  .title { font-weight: 700; }
+  .muted, .stats, .result { color: var(--muted); }
+  .counts { display: flex; flex-wrap: wrap; gap: 0 16px; }
+  .read { color: var(--read); }
+  .edit { color: var(--edit); }
+  .bash { color: var(--bash); }
+  .stats { font-size: 14px; margin: 0; }
+  .timeline { display: grid; gap: 0; }
+  .row { display: flex; align-items: baseline; gap: 12px; min-width: 0; }
+  .kind { flex: 0 0 5ch; }
+  .target { min-width: 0; flex: 0 1 auto; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .result { min-width: 0; max-width: 45%; flex: 0 0 auto; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 14px; }
+  .failure, .failure .kind, .failure .result { color: var(--error); }
+  .prompt { margin: 34px 12px 0; border-top: 1px solid #4a4940; padding-top: 12px; color: var(--muted); }
+  @media (max-width: 700px) {
+    main { margin-top: 20px; padding-inline: 10px; }
+    body { font-size: 14px; }
+    .heading { gap: 0 12px; }
+    .result, .stats { font-size: 12px; }
+    .activity, .overview { padding-inline: 10px; }
+    .thinking { margin-inline: 10px; }
+    .row { gap: 8px; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <p class="prototype-note">视觉样稿 · 固定示例数据 · 左侧竖线表示同批多调用，不代表已测量的实际并发 · Think 可展开，工具无点击详情</p>
+  <p class="message">把工具展示改得紧凑一点，保留分类计数和耗时统计。</p>
+  <p class="message assistant">我先检查现有渲染和交互实现，再调整工具区域的排列。</p>
+
+  <section class="overview" aria-label="本次请求的工具统计">
+    <div class="heading">
+      <span><span class="title">Tools</span> <span class="muted">16 calls · 5 turns</span></span>
+      <div class="counts"><span class="read">read ×6</span><span class="edit">edit ×7</span><span class="bash">bash ×3</span></div>
+    </div>
+    <div class="stats">1m 12s · tokens ↑8.0k ↓2.5k · cache 1.4M · 2026-08-16 19:32:25</div>
+  </section>
+
+  <details class="thinking">
+    <summary>Thinking…</summary>
+    <p>先一起查看展示入口、摘要格式、状态管理和相关测试，确认哪些部分只负责显示。</p>
+  </details>
+  <section class="activity" aria-label="同一批的四个 Read">
+    <div class="timeline grouped">
+      <div class="row"><span class="kind read">read</span><span class="target">src/display.ts</span><span class="result">182 lines</span></div>
+      <div class="row"><span class="kind read">read</span><span class="target">src/render-utils.ts</span><span class="result">96 lines</span></div>
+      <div class="row"><span class="kind read">read</span><span class="target">src/state.ts</span><span class="result">46 lines</span></div>
+      <div class="row"><span class="kind read">read</span><span class="target">tests/display.test.ts</span><span class="result">238 lines</span></div>
+    </div>
+  </section>
+
+  <details class="thinking">
+    <summary>Thinking…</summary>
+    <p>工具名和结果摘要放在一行。先修改展示和状态逻辑，失败的调用只用颜色区分。</p>
+  </details>
+  <section class="activity" aria-label="同一批的三个 Edit，其中一个失败">
+    <div class="timeline grouped">
+      <div class="row"><span class="kind edit">edit</span><span class="target">src/display.ts</span><span class="result">+26 −15</span></div>
+      <div class="row"><span class="kind edit">edit</span><span class="target">src/render-utils.ts</span><span class="result">+20 −11</span></div>
+      <div class="row failure" aria-label="Edit 失败：src/state.ts"><span class="kind edit">edit</span><span class="target">src/state.ts</span></div>
+    </div>
+  </section>
+
+  <details class="thinking">
+    <summary>Thinking…</summary>
+    <p>接着更新测试和说明文件。上面的失败保留在记录中，不影响其他成功调用的展示。</p>
+  </details>
+  <section class="activity" aria-label="同一批的四个 Edit">
+    <div class="timeline grouped">
+      <div class="row"><span class="kind edit">edit</span><span class="target">tests/display.test.ts</span><span class="result">+32 −4</span></div>
+      <div class="row"><span class="kind edit">edit</span><span class="target">tests/session.test.ts</span><span class="result">+12 −3</span></div>
+      <div class="row"><span class="kind edit">edit</span><span class="target">README.md</span><span class="result">+8 −2</span></div>
+      <div class="row"><span class="kind edit">edit</span><span class="target">README.zh-CN.md</span><span class="result">+8 −2</span></div>
+    </div>
+  </section>
+
+  <details class="thinking">
+    <summary>Thinking…</summary>
+    <p>单独运行检查。这次只有一个调用，所以左边留相同的空间，但不画竖线。</p>
+  </details>
+  <section class="activity" aria-label="单独的 Bash 调用">
+    <div class="timeline">
+      <div class="row"><span class="kind bash">bash</span><span class="target">npm run check</span><span class="result">38 lines · 2.8s</span></div>
+    </div>
+  </section>
+
+  <details class="thinking">
+    <summary>Thinking…</summary>
+    <p>最后查看图片记录、长命令输出和失败情况。Bash 成功或失败都保留输出行数。</p>
+  </details>
+  <section class="activity" aria-label="同一批的混合工具调用">
+    <div class="timeline grouped">
+      <div class="row"><span class="kind read">read</span><span class="target">checks/preview.png</span><span class="result">1 image</span></div>
+      <div class="row"><span class="kind bash">bash</span><span class="target">pi --offline --no-extensions --tui-mode fullscreen --extension ./index.ts --session /tmp/pi-compact-preview/session.jsonl</span><span class="result">13 lines · 3.1s</span></div>
+      <div class="row failure" aria-label="Bash 失败，输出 8 行"><span class="kind bash">bash</span><span class="target">npm run check --workspace packages/pi-compact-tool -- --reporter verbose --test-name-pattern 'aggregate timeline preserves failed edit results'</span><span class="result">8 lines · 0.4s</span></div>
+      <div class="row"><span class="kind read">read</span><span class="target">README.zh-CN.md</span><span class="result">94 lines</span></div>
+    </div>
+  </section>
+  <p class="message assistant">这是一次请求的完整样例：统计只出现一次，Think 保持原来的顺序，工具按同批调用分段。</p>
+  <div class="prompt">› 输入消息…</div>
+</main>
+</body>
+</html>

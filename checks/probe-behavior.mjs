@@ -1,0 +1,36 @@
+import { createRequire } from 'node:module';
+import { mkdtempSync, writeFileSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import assert from 'node:assert/strict';
+const host = '/Users/ziqian/.local/share/pi-node/node-v22.23.2-darwin-arm64/lib/node_modules/@earendil-works/pi-coding-agent';
+const require = createRequire(host + '/package.json');
+const { createJiti } = require('jiti');
+const cwd = mkdtempSync(join(tmpdir(), 'pi-reference-2-probe-'));
+process.env.PI_CODING_AGENT_DIR = cwd;
+const jiti = createJiti(import.meta.url, { alias: { '@earendil-works/pi-coding-agent': host + '/dist/index.js', '@earendil-works/pi-tui': host + '/node_modules/@earendil-works/pi-tui/dist/index.js', typebox: require.resolve('typebox') } });
+const root = process.argv[2];
+const { registerToolDisplayOverrides } = await jiti.import(root + '/src/tool-overrides.ts');
+const { DEFAULT_TOOL_DISPLAY_CONFIG } = await jiti.import(root + '/src/types.ts');
+let config = structuredClone(DEFAULT_TOOL_DISPLAY_CONFIG);
+const tools = new Map();
+registerToolDisplayOverrides({registerTool(t) {tools.set(t.name, t);}, on() {}, getAllTools() {return []; }}, () => config);
+const theme = {fg: (_, s) => s, bold: s => s};
+const imagePath = join(cwd, 'pixel.png');
+writeFileSync(imagePath, readFileSync(root + '/assets/demo-aggregate-1.png'));
+const result = await tools.get('read').execute('image', {path:imagePath}, undefined, undefined, {cwd});
+console.log('read content blocks: ' + JSON.stringify(result.content.map(c => ({type:c.type, mimeType:c.mimeType, text:c.text, dataLength:c.data?.length}))));
+assert.ok(result.content.some(c => c.type === 'image' && c.data));
+console.log('PASS read.execute returns image content for actual PNG input');
+const failure = {content:[{type:'text', text:'ENOENT: no such file or directory, missing.txt'}]};
+for (const mode of ['hidden','summary','preview']) {
+  config.readOutputMode = mode;
+  const rows = tools.get('read').renderResult(failure, {expanded:false,isPartial:false}, theme, {isError:true}).render(120);
+  console.log('read failure mode=' + mode + ': ' + JSON.stringify(rows));
+  if (mode === 'hidden') assert.ok(rows.every(row => !row.trim()));
+  if (mode === 'summary') assert.ok(rows.join('\n').includes('loaded 1 line'));
+}
+assert.ok(tools.get('bash').parameters.required.includes('displaySummary'));
+console.log('PASS bash schema requires displaySummary');
+console.log('edit schema keys: ' + Object.keys(tools.get('edit').parameters.properties).join(', '));
+console.log('probe cwd: ' + cwd);

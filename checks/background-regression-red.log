@@ -1,0 +1,27 @@
+✖ actual themed aggregate rows keep one continuous background across truncation and line-count suffix (4.304583ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1143.732041
+
+✖ failing tests:
+
+test at tests/background.test.ts:32:1
+✖ actual themed aggregate rows keep one continuous background across truncation and line-count suffix (4.304583ms)
+  AssertionError [ERR_ASSERTION]: {"width":40,"isError":false,"text":"   bash    npm run check --work… 3 lines","backgrounds":["48;2;37;65;49","48;2;37;65;49","48;2;37;65;49","48;2;37;65;49","48;2;37;65;49","48;2;37;65;49","48;2;37;65;49","48;2;37;65;49","48;2;37;65;49","48;2;37;65;49","48;2;37;65;49","48;2;37;65;49","48;2;37;65;49","48;2;37;65;49","48;2;37;65;49","48;2;37;65;49","48;2;37;65;49","48;2;37;65;49","48;2;37;65;49","48;2;37;65;49","48;2;37;65;49","48;2;37;65;49","48;2;37;65;49","48;2;37;65;49","48;2;37;65;49","48;2;37;65;49","48;2;37;65;49","48;2;37;65;49","48;2;37;65;49","48;2;37;65;49","48;2;37;65;49",null,null,null,null,null,null,null,null,null]}
+      at TestContext.<anonymous> (/Users/ziqian/20-dev/20-ecosystems/01-pi/extensions/22-pi-compact-tool/tests/background.test.ts:45:16)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1397:25)
+      at Test.start (node:internal/test_runner/test:1257:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
