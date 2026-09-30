@@ -1,0 +1,87 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { ToolExecutionComponent, initTheme, type ToolDefinition, type Theme } from "@earendil-works/pi-coding-agent";
+import { Text, stripTerminalSequences, visibleWidth, type TuiMouseEvent } from "@earendil-works/pi-tui";
+import { Type } from "typebox";
+import { ActivityProjection, installActivityUI } from "../src/activity.ts";
+import { resetDisplayState, setDisplayStyle } from "../src/state.ts";
+
+initTheme("dark", false);
+const theme = { appearance: "dark", getColorMode: () => "truecolor", fg: (_: string, text: string) => text, style: (text: string) => text, bold: (text: string) => text } as unknown as Theme;
+const plain = (rows: string[]) => rows.map(stripTerminalSequences).join("\n");
+const { createCodemodeToolDefinition } = await import(new URL("./extensions/codemode/tool.js", import.meta.resolve("@earendil-works/pi-coding-agent")).href);
+
+function custom(name: string): ToolDefinition<any> {
+  return {
+    name, label: name, description: "fixture", parameters: Type.Object({ pattern: Type.String() }),
+    exposure: "deferred", annotations: { readOnlyHint: true },
+    async execute() { throw new Error("display must not execute the tool"); },
+    renderCall: () => new Text("original custom title", 0, 0),
+    renderResult: () => new Text("original custom result", 0, 0),
+  };
+}
+
+test("FFF tools adapt inside the UI without changing registered definitions or executing tools", () => {
+  resetDisplayState("aggregate");
+  const release = installActivityUI(new ActivityProjection(), () => theme);
+  try {
+    for (const [name, expected] of [["ffgrep", "7 matches"], ["fffind", "7 files"]]) {
+      const definition = custom(name!);
+      const references = { ...definition };
+      const row = new ToolExecutionComponent(name!, "fff", { pattern: "needle", path: "src/" }, {}, definition, { requestRender() {} } as any, process.cwd());
+      row.updateResult({ content: [{ type: "text", text: "full first match\nfull second match" }], details: { totalMatched: 7, totalFiles: 100 }, isError: false });
+      const rendered = row.render(80);
+      assert.equal(rendered.length, 1);
+      assert.match(plain(rendered), /needle in src\//);
+      assert.ok(plain(rendered).includes(expected!));
+      assert.doesNotMatch(plain(rendered), /original custom|full first match/);
+      assert.deepEqual(definition, references);
+      assert.equal(row.handleMouse({ type: "click", button: "left", x: 5, y: 0, width: 80, height: 1 } as TuiMouseEvent)?.handled, true);
+      assert.match(plain(row.render(80)), /full first match\s*\n.*full second match/);
+      setDisplayStyle("claude");
+      assert.ok(plain(row.render(80)).includes(`${name}(`));
+      setDisplayStyle("aggregate");
+      for (const width of [1, 2, 15, 40]) assert.ok(row.render(width).every(line => visibleWidth(line) <= width));
+    }
+  } finally { release(); }
+});
+
+test("automatic custom adaptation restores original renderers on release and leaves unknown tools alone", () => {
+  resetDisplayState("aggregate");
+  const release = installActivityUI(new ActivityProjection(), () => theme);
+  const known = new ToolExecutionComponent("ffgrep", "known", { pattern: "test" }, {}, custom("ffgrep"), { requestRender() {} } as any, process.cwd());
+  const unknown = new ToolExecutionComponent("other", "unknown", {}, {}, custom("other"), { requestRender() {} } as any, process.cwd());
+  known.updateResult({ content: [{ type: "text", text: "match" }], details: undefined, isError: false });
+  unknown.updateResult({ content: [{ type: "text", text: "match" }], details: undefined, isError: false });
+  assert.match(plain(known.render(80)), /1 result line/);
+  assert.match(plain(unknown.render(80)), /original custom title/);
+  release();
+  assert.match(plain(known.render(80)), /original custom title/);
+  assert.match(plain(known.render(80)), /original custom result/);
+});
+
+test("actual codemode collapses to one row but expanded view retains native script and nested-call details", () => {
+  resetDisplayState("aggregate");
+  const release = installActivityUI(new ActivityProjection(), () => theme);
+  try {
+    const definition = createCodemodeToolDefinition();
+    const row = new ToolExecutionComponent("codemode", "code", { code: "const result = await tools.read({path: 'a'});\ntext(result);" }, {}, definition, { requestRender() {} } as any, process.cwd());
+    row.updateResult({ content: [{ type: "text", text: "Script completed\nWall time 0.1 seconds\nOutput:\n" }, { type: "text", text: "script output" }], details: { calls: [{ name: "read", args: '{"path":"a"}', status: "ok", durationMs: 5 }] }, isError: false });
+    const collapsed = row.render(100);
+    assert.equal(collapsed.length, 1);
+    assert.match(plain(collapsed), /codemode.*1 nested call/);
+    row.setExpanded(true);
+    const expanded = plain(row.render(100));
+    assert.match(expanded, /text\(result\)/);
+    assert.match(expanded, /read.*path.*5ms/);
+    assert.match(expanded, /script output/);
+    assert.equal(definition.name, "codemode");
+    for (const width of [1, 8, 30]) assert.ok(row.render(width).every(line => visibleWidth(line) <= width));
+    row.setExpanded(false);
+    row.updateResult({ content: [{ type: "text", text: "Script completed\nWall time 0.1 seconds\nOutput:\n" }, { type: "text", text: "script output" }], details: { calls: [] }, isError: false });
+    assert.match(plain(row.render(100)), /1 line/);
+    release();
+    assert.match(plain(row.render(100)), /text\(result\)/);
+    assert.doesNotMatch(plain(row.render(100)), /nested call/);
+  } finally { release(); }
+});

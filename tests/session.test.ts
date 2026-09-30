@@ -5,8 +5,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   createAgentSession, DefaultResourceLoader, SessionManager, SettingsManager,
-  ToolExecutionComponent, initTheme, type ExtensionUIContext,
+  AssistantMessageComponent, ToolExecutionComponent, initTheme, type ExtensionUIContext, type Theme,
 } from "@earendil-works/pi-coding-agent";
+import { stripTerminalSequences } from "@earendil-works/pi-tui";
 import { getDisplayStyle } from "../src/state.ts";
 
 test("actual Pi session loads the extension, retains active tools and switches existing rows without a model call", async () => {
@@ -37,6 +38,18 @@ test("actual Pi session loads the extension, retains active tools and switches e
     const row = new ToolExecutionComponent("read", "sdk-row", { path: "sample.txt" }, {}, tool, { requestRender() {} } as any, cwd);
     row.updateResult({ content: [{ type: "text", text: "one\ntwo\nthree" }], details: undefined, isError: false });
     row.setExpanded(true);
+    const fff = session.getToolDefinition("ffgrep")!;
+    const originalExecute = fff.execute;
+    const originalRenderer = fff.renderCall;
+    const fffResult = await fff.execute("fff-sdk", { pattern: "needle", path: "src/" }, undefined, undefined, {} as any);
+    const fffRow = new ToolExecutionComponent("ffgrep", "fff-sdk", { pattern: "needle", path: "src/" }, {}, fff, { requestRender() {} } as any, cwd);
+    fffRow.updateResult({ ...fffResult, isError: false });
+    assert.match(fffRow.render(100).join("\n"), /2 matches/);
+    assert.doesNotMatch(fffRow.render(100).join("\n"), /original search fixture/);
+    assert.equal(session.getToolDefinition("ffgrep")!.execute, originalExecute);
+    assert.equal(session.getToolDefinition("ffgrep")!.renderCall, originalRenderer);
+    assert.equal(session.getToolDefinition("ffgrep")!.exposure, "deferred");
+    assert.deepEqual(session.getActiveToolNames().sort(), ["bash", "edit", "read", "write"]);
     const customRow = new ToolExecutionComponent("compact_test_search", "custom-sdk-row", { query: "needle" }, {}, custom, { requestRender() {} } as any, cwd);
     customRow.updateResult({ ...customResult, isError: false });
     assert.match(customRow.render(100).join("\n"), /2 matches/);
@@ -54,12 +67,59 @@ test("actual Pi session loads the extension, retains active tools and switches e
     await session.reload();
     assert.deepEqual(session.getActiveToolNames().sort(), ["bash", "edit", "read", "write"]);
     assert.equal(getDisplayStyle(), "aggregate");
+    const replayFff = new ToolExecutionComponent("fffind", "fff-replay", { pattern: "index" }, {}, session.getToolDefinition("fffind")!, { requestRender() {} } as any, cwd);
+    replayFff.updateResult({ content: [{ type: "text", text: "index.ts\nindex.js" }], details: { totalMatched: 2 }, isError: false });
+    assert.match(replayFff.render(100).join("\n"), /2 files/);
     const aggregateRow = new ToolExecutionComponent("bash", "aggregate-sdk-row", { command: "check" }, {}, session.getToolDefinition("bash")!, { requestRender() {} } as any, cwd);
     aggregateRow.updateResult({ content: [{ type: "text", text: "first\nsecond" }], details: undefined, isError: true });
     assert.equal(aggregateRow.render(80).length, 1);
     assert.match(aggregateRow.render(80).join("\n"), /2 lines/);
     assert.doesNotMatch(aggregateRow.render(80).join("\n"), /failed:|second/);
   } finally {
+    session.dispose();
+  }
+});
+
+test("rendering after session disposal does not access stale extension context or API", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "pi-compact-stale-"));
+  const settingsManager = SettingsManager.inMemory({ outputPad: 0 });
+  const resourceLoader = new DefaultResourceLoader({
+    cwd, agentDir: cwd, settingsManager, noExtensions: true, noSkills: true,
+    noPromptTemplates: true, noThemes: true,
+    additionalExtensionPaths: [new URL("../index.ts", import.meta.url).pathname],
+  });
+  await resourceLoader.reload();
+  const { session } = await createAgentSession({ cwd, resourceLoader, settingsManager, sessionManager: SessionManager.inMemory(cwd) });
+  initTheme("dark", false);
+  const theme = {
+    appearance: "dark", getColorMode: () => "truecolor", fg: (_: string, text: string) => text,
+    style: (text: string) => text, bold: (text: string) => text,
+  } as unknown as Theme;
+  try {
+    await session.bindExtensions({ mode: "tui", uiContext: { theme, notify() {} } as unknown as ExtensionUIContext });
+    const message = {
+      role: "assistant", timestamp: 1000, stopReason: "toolUse",
+      content: [
+        { type: "thinking", thinking: "inspect files" },
+        { type: "toolCall", id: "stale-read", name: "read", arguments: { path: "sample.txt" } },
+      ],
+      api: "openai-completions", provider: "openai", model: "test",
+      usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+    };
+    const assistant = new AssistantMessageComponent(message as any, true, undefined, undefined, 0);
+    const tool = new ToolExecutionComponent("read", "stale-read", { path: "sample.txt" }, {}, session.getToolDefinition("read")!, { requestRender() {} } as any, cwd);
+    tool.updateResult({ content: [{ type: "text", text: "one" }], details: undefined, isError: false });
+    const before = [assistant.render(80), tool.render(80)];
+    assert.match(stripTerminalSequences(before[1]!.join("\n")), /^read/);
+    session.dispose();
+    assert.deepEqual([assistant.render(80), tool.render(80)], before);
+    assistant.setOutputPad(1);
+    assistant.render(80);
+    assert.match(stripTerminalSequences(tool.render(80).join("\n")), /^ read/);
+  } finally {
+    // Release the prototype patches through the normal lifecycle, even though
+    // dispose has already invalidated contexts without emitting shutdown.
+    await (session as any)._extensionRunner.emit({ type: "session_shutdown", reason: "exit" });
     session.dispose();
   }
 });

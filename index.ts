@@ -46,7 +46,10 @@ export default function compactToolExtension(pi: ExtensionAPI): void {
     resetDisplayState(styles.includes(flag as DisplayStyle) ? flag as DisplayStyle : "aggregate");
     if (!interactive(ctx)) return;
     rebuild(ctx);
-    releaseUI = installActivityUI(activity, () => ctx.ui.theme, () => pi.getSettings().outputPad === 0 ? 0 : 1);
+    // Render callbacks can outlive this session's extension context.
+    const theme = ctx.ui.theme;
+    const outputPad = pi.getSettings().outputPad === 0 ? 0 : 1;
+    releaseUI = installActivityUI(activity, () => theme, () => outputPad);
     if (!styles.includes(flag as DisplayStyle)) ctx.ui.notify("compact-style 只支持 aggregate、tidy 或 claude，已使用 aggregate。", "warning");
   });
   pi.on("message_end", (event, ctx) => {

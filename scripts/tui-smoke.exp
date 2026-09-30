@@ -21,6 +21,22 @@ expect {
 expect -timeout 3 { -re {.+} { exp_continue } timeout {} }
 log_file
 puts [exec python3 [file join [file dirname [file normalize [info script]]] check-aggregate-screen.py] $log]
+set thinking_row [exec python3 $row_helper $log {Thinking\.\.\.}]
+log_file -a $log
+send -- "\033\[<0;4;${thinking_row}M\033\[<0;4;${thinking_row}m"
+expect {
+  -re {下面三个 Read} {}
+  timeout { puts stderr "Click did not expand native thinking"; exit 1 }
+}
+after 500
+send -- "\033\[<0;4;${thinking_row}M\033\[<0;4;${thinking_row}m"
+expect {
+  -re {Thinking\.\.\.} {}
+  timeout { puts stderr "Click did not collapse native thinking"; exit 1 }
+}
+expect -timeout 2 { -re {.+} { exp_continue } timeout {} }
+log_file
+puts [exec python3 [file join [file dirname [file normalize [info script]]] check-aggregate-screen.py] $log]
 set row [exec python3 $row_helper $log]
 log_file -a $log
 send -- "\033\[<0;4;${row}M\033\[<0;4;${row}m"
@@ -82,4 +98,4 @@ expect {
 }
 set result [wait]
 if {[lindex $result 3] != 0} { puts stderr "Pi exited with [lindex $result 3]"; exit 1 }
-puts "PASS real Pi fullscreen aggregate startup, per-row click expansion/collapse, tidy/claude/aggregate switching, reload restoration, and clean exit (no model request)"
+puts "PASS real Pi fullscreen unified thinking/tool panel, native thinking and tool clicks, tidy/claude/aggregate switching, reload restoration, and clean exit (no model request)"

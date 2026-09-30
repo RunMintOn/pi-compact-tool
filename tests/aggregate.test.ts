@@ -13,7 +13,7 @@ const assistant = (content: any[], timestamp: number, stopReason = "toolUse") =>
 const call = (id: string, name = "read") => ({ type: "toolCall", id, name, arguments: { path: "sample.txt" } });
 const output = (text: string, isError = false) => ({ content: [{ type: "text" as const, text }], details: undefined, isError });
 const plain = (rows: string[]) => rows.map(stripTerminalSequences).join("\n");
-const colorTheme = { fg: (color: string, text: string) => color === "error" ? `\x1b[31m${text}\x1b[39m` : color === "muted" ? `\x1b[90m${text}\x1b[39m` : text, bg: (_: string, text: string) => text, bold: (text: string) => text, style: (text: string) => text, appearance: "dark", getColorMode: () => "truecolor" } as unknown as Theme;
+const colorTheme = { fg: (color: string, text: string) => color === "error" ? `\x1b[31m${text}\x1b[39m` : color === "muted" ? `\x1b[90m${text}\x1b[39m` : text, bg: (_: string, text: string) => text, bold: (text: string) => `\x1b[1m${text}\x1b[22m`, style: (text: string) => text, appearance: "dark", getColorMode: () => "truecolor" } as unknown as Theme;
 
 function fixture() {
   const p = new ActivityProjection();
@@ -180,12 +180,10 @@ test("real Pi aggregate rows keep region spacing, preserve per-row click and thi
     const row = new ToolExecutionComponent("read", "r1", { path: "sample.txt" }, {}, tool, { requestRender() {} } as any, process.cwd());
     row.updateResult(output("one\ntwo\nthree"));
     const rows = row.render(80);
-    assert.equal(rows.length, 4);
-    assert.equal(rows[0], "");
-    assert.equal(stripTerminalSequences(rows[1]!), " ".repeat(80));
-    assert.match(plain(rows.slice(2)), /^ parallel · 2 calls\s*\n read/);
-    for (const y of [0, 1, 2]) assert.equal(row.handleMouse({ type: "click", button: "left", x: 5, y, width: 80, height: 4 } as TuiMouseEvent), undefined);
-    assert.equal(row.handleMouse({ type: "click", button: "left", x: 5, y: 3, width: 80, height: 4 } as TuiMouseEvent)?.handled, true);
+    assert.equal(rows.length, 2); // Thinking owns this region's leading padding.
+    assert.match(plain(rows), /^ parallel · 2 calls\s*\n read/);
+    assert.equal(row.handleMouse({ type: "click", button: "left", x: 5, y: 0, width: 80, height: 2 } as TuiMouseEvent), undefined);
+    assert.equal(row.handleMouse({ type: "click", button: "left", x: 5, y: 1, width: 80, height: 2 } as TuiMouseEvent)?.handled, true);
     assert.match(plain(row.render(80)), /three/);
     setDisplayStyle("tidy");
     assert.equal(row.render(80)[0], "");
@@ -198,7 +196,7 @@ test("real Pi aggregate rows keep region spacing, preserve per-row click and thi
     assert.match(rendered, /4 calls.*4 turns/);
     const thinking = new AssistantMessageComponent(assistant([{ type: "thinking", thinking: "hidden unique thinking" }, call("r1"), call("r2")], 1100) as any, true);
     assert.doesNotMatch(plain(thinking.render(100)), /hidden unique thinking/);
-    assert.equal(thinking.handleMouse({ type: "click", button: "left", x: 3, y: 1, width: 100, height: 2 } as TuiMouseEvent)?.handled, true);
+    assert.equal(thinking.handleMouse({ type: "click", button: "left", x: 3, y: 2, width: 100, height: 3 } as TuiMouseEvent)?.handled, true);
     assert.match(plain(thinking.render(100)), /hidden unique thinking/);
   } finally { release(); }
   assert.equal(ToolExecutionComponent.prototype.render, originalToolRender);
@@ -268,15 +266,17 @@ test("serial calls, adjacent parallel batches and trailing serial calls have una
   } finally { release(); }
 });
 
-test("request statistics preserve native padding without panel background or added blank lines", () => {
+test("request statistics have one separator, no bold or background, and preserve native padding", () => {
   const p = fixture();
   const final = assistant([{ type: "text", text: "done" }], 2000, "stop");
   p.ingest(final as any);
   const rows = renderActivitySummary(p.summaryFor(final as any)!, colorTheme, 80);
-  assert.equal(rows.length, 2);
-  assert.match(stripTerminalSequences(rows[0]!), /^ Tools /);
-  assert.match(stripTerminalSequences(rows[1]!), /^ 1s · tokens/);
-  assert.match(stripTerminalSequences(renderActivitySummary(p.summaryFor(final as any)!, colorTheme, 80, 0)[0]!), /^Tools /);
+  assert.equal(rows.length, 3);
+  assert.equal(rows[0], "");
+  assert.match(stripTerminalSequences(rows[1]!), /^ Tools /);
+  assert.match(stripTerminalSequences(rows[2]!), /^ 1s · tokens/);
+  assert.doesNotMatch(rows[1]!, /\x1b\[1m/);
+  assert.match(stripTerminalSequences(renderActivitySummary(p.summaryFor(final as any)!, colorTheme, 80, 0)[1]!), /^Tools /);
   assert.ok(rows.every(row => !/\x1b\[(?:48[;:]|4[0-7]m)/.test(row)));
 });
 
@@ -289,8 +289,8 @@ test("zero native output padding aligns tools, parallel headings and assistant s
   try {
     const row = new ToolExecutionComponent("read", "r1", { path: "sample.txt" }, {}, decorateTool(createReadToolDefinition(process.cwd())), { requestRender() {} } as any, process.cwd());
     row.updateResult(output("one"));
-    assert.match(stripTerminalSequences(row.render(80)[2]!), /^parallel /);
-    assert.match(stripTerminalSequences(row.render(80)[3]!), /^read /);
+    assert.match(stripTerminalSequences(row.render(80)[0]!), /^parallel /);
+    assert.match(stripTerminalSequences(row.render(80)[1]!), /^read /);
     const message = new AssistantMessageComponent(final as any, true);
     message.setOutputPad(0);
     const stats = message.render(80).map(stripTerminalSequences).find(line => line.includes("Tools"));

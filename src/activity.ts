@@ -1,10 +1,11 @@
 import { AssistantMessageComponent, ToolExecutionComponent, sessionEntryToContextMessages, type Theme } from "@earendil-works/pi-coding-agent";
-import { truncateToWidth, type TuiMouseEvent } from "@earendil-works/pi-tui";
+import { MouseRegion, Spacer, truncateToWidth, type Component, type TuiMouseEvent } from "@earendil-works/pi-tui";
 import { getDisplayStyle } from "./state.ts";
+import { adaptCustomTool } from "./custom-tools.ts";
 import { lineCount, panelLine, parallelLabel, SummaryLine, toolLabel } from "./render-utils.ts";
 
-// These small host patches only remove the native leading tool spacer and append a
-// transient summary. Native rendering, mouse regions, thinking and images stay in charge.
+// Reversible layout patches join native thinking and tools into a display panel.
+// Native content, expansion state, mouse handlers and image protocols stay in charge.
 export const ACTIVITY_ENTRY = "compact-tool.activity.v1";
 type Message = { role: string; timestamp?: number; content?: unknown; stopReason?: string; toolCallId?: string; usage?: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number } };
 interface Call { id: string; name: string; }
@@ -33,6 +34,7 @@ function calls(message: Message): Call[] {
 function key(message: Message): string {
   return calls(message)[0]?.id ?? `assistant:${message.timestamp}`;
 }
+function thinkingId(message: Message, run: number): string { return `${key(message)}:thinking:${run}`; }
 function terminal(message: Message): boolean {
   return message.role === "assistant" && calls(message).length === 0 && ["stop", "error", "aborted", "length"].includes(message.stopReason ?? "");
 }
@@ -64,16 +66,30 @@ export class ActivityProjection {
     request.turns++;
     for (const metric of ["input", "output", "cacheRead", "cacheWrite"] as const) request.usage[metric] += message.usage?.[metric] ?? 0;
     const toolCalls = calls(message);
-    const visibleContent = Array.isArray(message.content) && message.content.some(block =>
-      (block?.type === "text" && typeof block.text === "string" && block.text.trim()) ||
-      (block?.type === "thinking" && typeof block.thinking === "string" && block.thinking.trim()));
-    if (visibleContent || terminal(message)) this.currentRegion = undefined;
     const batch = { ids: toolCalls.map(call => call.id), observed: false };
-    if (toolCalls.length) this.currentRegion ??= { ids: [] };
+    const addNode = (id: string) => {
+      this.currentRegion ??= { ids: [] };
+      this.currentRegion.ids.push(id);
+      this.regions.set(id, this.currentRegion);
+    };
+    const blocks = Array.isArray(message.content) ? message.content : [];
+    let run = 0;
+    for (let index = 0; index < blocks.length; index++) {
+      const block = blocks[index];
+      if (block?.type === "text" && block.text?.trim()) this.currentRegion = undefined;
+      if (block?.type === "thinking") {
+        let visible = false;
+        while (index < blocks.length && blocks[index]?.type === "thinking") {
+          visible ||= Boolean(blocks[index].thinking?.trim());
+          index++;
+        }
+        index--;
+        if (visible) addNode(thinkingId(message, run++));
+      }
+      if (block?.type === "toolCall" && toolCalls.some(call => call.id === block.id)) addNode(block.id);
+    }
     for (const call of toolCalls) {
       this.batches.set(call.id, batch);
-      this.currentRegion!.ids.push(call.id);
-      this.regions.set(call.id, this.currentRegion!);
       request.ids.push(call.id);
       request.calls++;
       request.counts.set(call.name, (request.counts.get(call.name) ?? 0) + 1);
@@ -82,6 +98,7 @@ export class ActivityProjection {
       request.finalKey = messageKey;
       request.end = message.timestamp;
       this.summaries.set(messageKey, request);
+      this.currentRegion = undefined;
     }
   }
 
@@ -105,6 +122,8 @@ export class ActivityProjection {
     }
   }
 
+  hasNode(id: string): boolean { return this.regions.has(id); }
+  hasTools(id: string): boolean { return this.regions.get(id)?.ids.some(node => this.batches.has(node)) ?? false; }
   startsBlock(id: string): boolean { return this.regions.get(id)?.ids[0] === id; }
   endsBlock(id: string): boolean { return this.regions.get(id)?.ids.at(-1) === id; }
   nextInBlock(id: string): string | undefined {
@@ -121,8 +140,9 @@ export class ActivityProjection {
     const ids = this.regions.get(id)?.ids;
     const index = ids?.indexOf(id) ?? -1;
     if (!ids || index <= 0) return false;
+    if (!this.batches.has(id)) return this.hasTools(id);
     const previous = ids[index - 1]!;
-    return this.batches.get(previous) !== this.batches.get(id) && (this.isParallel(previous) || this.isParallel(id));
+    return this.batches.has(previous) && this.batches.has(id) && this.batches.get(previous) !== this.batches.get(id) && (this.isParallel(previous) || this.isParallel(id));
   }
 
   isParallel(id: string): boolean {
@@ -197,7 +217,7 @@ function clock(ms: number): string {
 export function renderActivitySummary(summary: ActivitySummary, theme: Theme, width: number, outputPad = 1): string[] {
   if (width < 1) return [];
   const counts = [...summary.counts].map(([name, count]) => toolLabel(name, `${name} ×${count}`, theme)).join(" · ");
-  const heading = `${theme.bold("Tools")} ${theme.fg("muted", `${summary.calls} calls · ${summary.turns} turns`)} · ${counts}`;
+  const heading = `${theme.fg("muted", "Tools")} ${theme.fg("muted", `${summary.calls} calls · ${summary.turns} turns`)} · ${counts}`;
   const parts: string[] = [];
   if (summary.start !== undefined && summary.end !== undefined) {
     const seconds = Math.max(0, Math.round((summary.end - summary.start) / 1000));
@@ -209,7 +229,7 @@ export function renderActivitySummary(summary: ActivitySummary, theme: Theme, wi
   const date = summary.end !== undefined ? theme.fg("muted", `· ${clock(summary.end)}`) : "";
   const contentWidth = Math.max(1, width - outputPad * 2);
   const stats = new SummaryLine(theme.fg("muted", parts.join(" · ")), date).render(contentWidth)[0] ?? "";
-  return [heading, stats].map(text => truncateToWidth(" ".repeat(outputPad) + truncateToWidth(text, contentWidth, "…"), width, "…"));
+  return ["", ...[heading, stats].map(text => truncateToWidth(" ".repeat(outputPad) + truncateToWidth(text, contentWidth, "…"), width, "…"))];
 }
 
 const sharedKey = Symbol.for("pi-compact-tool.activity-ui.v1");
@@ -219,15 +239,19 @@ export function transcriptPadding(): number { return shared[sharedKey]?.getOutpu
 export function bashOutputLines(id: string): number | undefined { return shared[sharedKey]?.projection.bashLines(id); }
 
 /** Reversible patches, installed only in an interactive session and released on reload/shutdown. */
-export function installActivityUI(projection: ActivityProjection, getTheme: () => Theme, getOutputPad = () => 1): () => void {
+export function installActivityUI(projection: ActivityProjection, getTheme: () => Theme, getInitialOutputPad = () => 1): () => void {
   shared[sharedKey]?.release();
+  let outputPad = getInitialOutputPad();
+  const getOutputPad = () => outputPad;
   const tool = ToolExecutionComponent.prototype;
   const assistant = AssistantMessageComponent.prototype;
   const originalToolRender = tool.render;
   const originalMouse = tool.handleMouse;
   const originalAssistantRender = assistant.render;
   type NativeTool = { toolCallId: string; rendererState: { compactAggregate?: unknown }; selfRenderHeight: number; imageComponents: unknown[]; };
-  type NativeAssistant = { lastMessage?: Message; isStreaming: boolean; outputPad: number };
+  type NativeAssistant = { lastMessage?: Message; isStreaming: boolean; outputPad: number; contentContainer: { children: Component[]; mouseLayout?: unknown } };
+  const renderedAssistants = new Set<AssistantMessageComponent>();
+  const adaptedTools = new Map<ToolExecutionComponent, () => void>();
   const compact = (instance: ToolExecutionComponent) => getDisplayStyle() === "aggregate" && Boolean((instance as unknown as NativeTool).rendererState.compactAggregate);
   function prefix(id: string, width: number): string[] {
     const theme = getTheme();
@@ -238,6 +262,10 @@ export function installActivityUI(projection: ActivityProjection, getTheme: () =
     ];
   }
   function toolRender(this: ToolExecutionComponent, width: number): string[] {
+    if (!adaptedTools.has(this)) {
+      const restore = adaptCustomTool(this);
+      if (restore) adaptedTools.set(this, restore);
+    }
     const rows = originalToolRender.call(this, width);
     if (!compact(this) || !rows.length || width < 1) return rows;
     const native = this as unknown as NativeTool;
@@ -269,10 +297,53 @@ export function installActivityUI(projection: ActivityProjection, getTheme: () =
     return originalMouse.call(this, { ...event, y: event.y - prefixHeight + 1 });
   }
   function assistantRender(this: AssistantMessageComponent, width: number): string[] {
-    const rows = originalAssistantRender.call(this, width);
     const native = this as unknown as NativeAssistant;
-    if (getDisplayStyle() !== "aggregate" || native.isStreaming || !native.lastMessage) return rows;
-    const summary = projection.summaryFor(native.lastMessage);
+    // Native messages track /settings padding changes without a session API call.
+    outputPad = native.outputPad;
+    if (getDisplayStyle() !== "aggregate" || !native.lastMessage || width < 1) return originalAssistantRender.call(this, width);
+    const children = native.contentContainer.children;
+    let run = 0;
+    const thinking = new Map<Component, string>();
+    for (const child of children) {
+      if (!(child instanceof MouseRegion)) continue;
+      const id = thinkingId(native.lastMessage, run++);
+      if (projection.hasNode(id) ? projection.hasTools(id) : calls(native.lastMessage).length > 0) thinking.set(child, id);
+    }
+    const decorated = children.map((child, index): Component => {
+      if (child instanceof Spacer && thinking.has(children[index + 1]!)) {
+        return { render: () => [], invalidate() {} };
+      }
+      const id = thinking.get(child);
+      if (!id || !(child instanceof MouseRegion)) return child;
+      const known = projection.hasNode(id);
+      const first = known ? projection.startsBlock(id) : index <= 1 || !(children[index - 1] instanceof MouseRegion);
+      const last = known ? projection.endsBlock(id) : false;
+      let bodyHeight = 0;
+      const prefixHeight = first ? 2 : 1;
+      return {
+        render: (availableWidth) => {
+          const body = child.render(availableWidth);
+          bodyHeight = body.length;
+          const padding = panelLine("", availableWidth, getTheme());
+          return [
+            ...(first ? ["", padding] : [padding]),
+            ...body.map(row => panelLine(row, availableWidth, getTheme())),
+            ...(last ? [padding] : []),
+          ];
+        },
+        handleMouse: (event) => event.y < prefixHeight || event.y >= prefixHeight + bodyHeight ? undefined
+          : child.handleMouse({ ...event, y: event.y - prefixHeight, height: bodyHeight }),
+        invalidate: () => child.invalidate(),
+      };
+    });
+    // Render through the native containers so their cached mouse layouts use the
+    // decorated heights. The wrappers forward clicks to the original MouseRegion.
+    native.contentContainer.children = decorated;
+    renderedAssistants.add(this);
+    let rows: string[];
+    try { rows = originalAssistantRender.call(this, width); }
+    finally { native.contentContainer.children = children; }
+    const summary = native.isStreaming ? undefined : projection.summaryFor(native.lastMessage);
     return summary ? [...rows, ...renderActivitySummary(summary, getTheme(), width, native.outputPad)] : rows;
   }
   tool.render = toolRender;
@@ -282,6 +353,13 @@ export function installActivityUI(projection: ActivityProjection, getTheme: () =
     if (tool.render === toolRender) tool.render = originalToolRender;
     if (tool.handleMouse === toolMouse) tool.handleMouse = originalMouse;
     if (assistant.render === assistantRender) assistant.render = originalAssistantRender;
+    for (const component of renderedAssistants) {
+      (component as unknown as NativeAssistant).contentContainer.mouseLayout = undefined;
+      (component as unknown as { mouseLayout?: unknown }).mouseLayout = undefined;
+    }
+    renderedAssistants.clear();
+    for (const restore of adaptedTools.values()) restore();
+    adaptedTools.clear();
     if (shared[sharedKey] === installed) delete shared[sharedKey];
   } };
   shared[sharedKey] = installed;
