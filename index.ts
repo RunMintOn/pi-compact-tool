@@ -52,6 +52,13 @@ export default function compactToolExtension(pi: ExtensionAPI): void {
     releaseUI = installActivityUI(activity, () => theme, () => outputPad);
     if (!styles.includes(flag as DisplayStyle)) ctx.ui.notify("compact-style 只支持 aggregate、tidy 或 claude，已使用 aggregate。", "warning");
   });
+  pi.on("agent_start", (_event, ctx) => {
+    if (interactive(ctx)) activity.agentStarted(Date.now());
+  });
+  pi.on("agent_end", (event, ctx) => {
+    if (!interactive(ctx)) return;
+    activity.agentEnded(event.messages, Date.now());
+  });
   pi.on("message_end", (event, ctx) => {
     if (!interactive(ctx)) return;
     activity.ingest(event.message);

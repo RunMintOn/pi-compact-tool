@@ -19,6 +19,7 @@ export interface ActivitySummary {
   usage: { input: number; output: number; cacheRead: number; cacheWrite: number };
   start?: number;
   end?: number;
+  tps?: number;
 }
 interface Request extends ActivitySummary { ids: string[]; finalKey?: string; }
 export interface TimingRecord {
@@ -26,6 +27,7 @@ export interface TimingRecord {
   finalKey?: string;
   start?: number;
   end?: number;
+  tps?: number;
 }
 function calls(message: Message): Call[] {
   if (!Array.isArray(message.content)) return [];
@@ -48,6 +50,20 @@ export class ActivityProjection {
   private summaries = new Map<string, Request>();
   private seen = new Set<string>();
   private current?: Request;
+  private agentStartMs: number | null = null;
+
+  agentStarted(now: number): void { this.agentStartMs = now; }
+  agentEnded(messages: readonly Message[], now: number): void {
+    if (this.agentStartMs === null) return;
+    const elapsedMs = now - this.agentStartMs;
+    this.agentStartMs = null;
+    if (elapsedMs <= 0) return;
+    const output = messages.reduce((total, message) => total + (message.role === "assistant" ? message.usage?.output || 0 : 0), 0);
+    if (output <= 0) return;
+    const final = [...messages].reverse().find(terminal);
+    const request = final ? this.summaries.get(key(final)) : undefined;
+    if (request) request.tps = output / (elapsedMs / 1000);
+  }
 
   ingest(message: Message): void {
     if (message.role === "user") {
@@ -63,6 +79,7 @@ export class ActivityProjection {
     const request = this.current;
     if (request.finalKey) this.summaries.delete(request.finalKey);
     request.finalKey = undefined;
+    request.tps = undefined;
     request.turns++;
     for (const metric of ["input", "output", "cacheRead", "cacheWrite"] as const) request.usage[metric] += message.usage?.[metric] ?? 0;
     const toolCalls = calls(message);
@@ -104,7 +121,7 @@ export class ActivityProjection {
 
   rebuild(entries: readonly unknown[]): void {
     this.batches.clear(); this.regions.clear(); this.currentRegion = undefined;
-    this.timings.clear(); this.summaries.clear(); this.seen.clear(); this.current = undefined;
+    this.timings.clear(); this.summaries.clear(); this.seen.clear(); this.current = undefined; this.agentStartMs = null;
     for (const value of entries) {
       const entry = value as { type: string; message?: Message; retainedTail?: unknown[] };
       if (entry.type === "message" && entry.message) {
@@ -191,7 +208,7 @@ export class ActivityProjection {
     return { calls: (request?.ids ?? []).flatMap(id => {
       const timing = this.timings.get(id);
       return timing ? [{ id, ...timing }] : [];
-    }), finalKey: request?.finalKey, start: request?.start, end: request?.end };
+    }), finalKey: request?.finalKey, start: request?.start, end: request?.end, tps: request?.tps };
   }
   restoreTiming(record: TimingRecord): void {
     if (!Array.isArray(record.calls)) return;
@@ -200,7 +217,7 @@ export class ActivityProjection {
       if (batch) { batch.observed = true; this.timings.set(timing.id, timing); }
     }
     const request = record.finalKey ? this.summaries.get(record.finalKey) : undefined;
-    if (request) { request.start = record.start ?? request.start; request.end = record.end ?? request.end; }
+    if (request) { request.start = record.start ?? request.start; request.end = record.end ?? request.end; request.tps = record.tps; }
   }
 }
 
@@ -217,12 +234,13 @@ function clock(ms: number): string {
 export function renderActivitySummary(summary: ActivitySummary, theme: Theme, width: number, outputPad = 1): string[] {
   if (width < 1) return [];
   const counts = [...summary.counts].map(([name, count]) => toolLabel(name, `${name} ×${count}`, theme)).join(" · ");
-  const heading = `${theme.fg("muted", "Tools")} ${theme.fg("muted", `${summary.calls} calls · ${summary.turns} turns`)} · ${counts}`;
+  const heading = `${theme.fg("muted", `${summary.calls} calls · ${summary.turns} turns`)} · ${counts}`;
   const parts: string[] = [];
   if (summary.start !== undefined && summary.end !== undefined) {
     const seconds = Math.max(0, Math.round((summary.end - summary.start) / 1000));
     parts.push(seconds >= 60 ? `${Math.floor(seconds / 60)}m ${seconds % 60}s` : `${seconds}s`);
   }
+  if (summary.tps !== undefined) parts.push(`TPS ${summary.tps.toFixed(1)} tok/s`);
   parts.push(`tokens ↑${tokens(summary.usage.input)} ↓${tokens(summary.usage.output)}`);
   if (summary.usage.cacheRead) parts.push(`cache read ${tokens(summary.usage.cacheRead)}`);
   if (summary.usage.cacheWrite) parts.push(`cache write ${tokens(summary.usage.cacheWrite)}`);

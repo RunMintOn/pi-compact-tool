@@ -36,11 +36,12 @@ for row in [thinking[0] - 1, parallel_rows[-1] + 1]:
     assert not rows[row], f"Expected empty panel padding at row {row}"
     assert re.search(r"\x1b\[48;", raw_rows[row]), f"Expected colored panel padding at row {row}"
 assert not any("ENOENT" in text for text in rows.values()), "Collapsed failed Read must hide error text"
-summary = locate(r"Tools 6 calls · 5 turns")
+summary = locate(r"6 calls · 5 turns")
 assert summary == locate(r"FINAL ANSWER") + 2, "Summary must follow the final answer with one blank row"
 assert not rows[summary - 1], "Expected one blank separator before statistics"
-assert not re.search(r"\x1b\[1m", raw_rows[summary]), "Tools must not be bold"
-stats = locate(r"tokens ↑0 ↓0.*\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}")
+assert not re.search(r"\x1b\[1m", raw_rows[summary]), "statistics must not be bold"
+stats = locate(r"TPS \d+\.\d tok/s · tokens ↑0 ↓100.*\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}")
+assert not any("Tools" in text for text in rows.values()), "Statistics must not have a Tools label"
 assert stats == summary + 1, "Statistics must remain consecutive"
 for row in [summary, stats]:
     assert not re.search(r"\x1b\[48[;:]", raw_rows[row]), "Statistics must not have a panel background"

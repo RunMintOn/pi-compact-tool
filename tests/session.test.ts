@@ -10,7 +10,7 @@ import {
 import { stripTerminalSequences } from "@earendil-works/pi-tui";
 import { getDisplayStyle } from "../src/state.ts";
 
-test("actual Pi session loads the extension, retains active tools and switches existing rows without a model call", async () => {
+test("actual Pi session loads the extension, retains active tools and switches existing rows without a model call", async (t) => {
   const cwd = mkdtempSync(join(tmpdir(), "pi-compact-session-"));
   const settingsManager = SettingsManager.inMemory({ shellCommandPrefix: "export COMPACT_SDK=ok;" });
   const resourceLoader = new DefaultResourceLoader({
@@ -33,7 +33,8 @@ test("actual Pi session loads the extension, retains active tools and switches e
     assert.deepEqual(customResult.details, { count: 2 });
     const notices: string[] = [];
     initTheme("dark", false);
-    await session.bindExtensions({ mode: "tui", uiContext: { notify(message: string) { notices.push(message); } } as ExtensionUIContext });
+    const theme = { appearance: "dark", fg: (_: string, text: string) => text, style: (text: string) => text } as unknown as Theme;
+    await session.bindExtensions({ mode: "tui", uiContext: { theme, notify(message: string) { notices.push(message); } } as ExtensionUIContext });
     const tool = session.getToolDefinition("read")!;
     const row = new ToolExecutionComponent("read", "sdk-row", { path: "sample.txt" }, {}, tool, { requestRender() {} } as any, cwd);
     row.updateResult({ content: [{ type: "text", text: "one\ntwo\nthree" }], details: undefined, isError: false });
@@ -64,6 +65,34 @@ test("actual Pi session loads the extension, retains active tools and switches e
     assert.match(row.render(100).join("\n"), /three/);
     assert.equal(session.messages.filter((message) => message.role === "assistant").length, 0);
     assert.equal(notices.length, 2);
+    await session.prompt("/tool-style aggregate");
+    const noticeCount = notices.length;
+    const runner = (session as any)._extensionRunner;
+    let now = 1000;
+    const clock = t.mock.method(Date, "now", () => now);
+    const usage = (output: number) => ({ input: 100, output, cacheRead: 0, cacheWrite: 0, totalTokens: 100 + output, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } });
+    const toolMessage = { role: "assistant", content: [{ type: "toolCall", id: "tps-read", name: "read", arguments: { path: "sample.txt" } }], timestamp: 1100, stopReason: "toolUse", usage: usage(600), api: "openai-completions", provider: "openai", model: "test" };
+    const final = { ...toolMessage, content: [{ type: "text", text: "TPS final answer" }], timestamp: 19000, stopReason: "stop", usage: usage(300) };
+    try {
+      const user = { role: "user", content: "TPS test", timestamp: 1000 };
+      await runner.emit({ type: "message_end", message: user });
+      await runner.emit({ type: "agent_start" });
+      await runner.emit({ type: "message_end", message: toolMessage });
+      now = 2000;
+      await runner.emit({ type: "tool_execution_start", toolCallId: "tps-read", toolName: "read", args: { path: "sample.txt" } });
+      now = 12000;
+      await runner.emit({ type: "tool_execution_end", toolCallId: "tps-read", toolName: "read", result: { content: [{ type: "text", text: "one" }] }, isError: false });
+      now = 21000;
+      await runner.emit({ type: "message_end", message: final });
+      await runner.emit({ type: "agent_end", messages: [user, toolMessage, final] });
+      const rendered = new AssistantMessageComponent(final as any, true).render(120).map(stripTerminalSequences).join("\n");
+      assert.match(rendered, /20s · TPS 45\.0 tok\/s/);
+      assert.doesNotMatch(rendered, /Tools/);
+      assert.equal(notices.length, noticeCount);
+      await runner.emit({ type: "agent_settled" });
+      const record = session.sessionManager.getBranch().find(entry => entry.type === "custom" && entry.customType === "compact-tool.activity.v1");
+      assert.equal((record as any)?.data.tps, 45);
+    } finally { clock.mock.restore(); }
     await session.reload();
     assert.deepEqual(session.getActiveToolNames().sort(), ["bash", "edit", "read", "write"]);
     assert.equal(getDisplayStyle(), "aggregate");

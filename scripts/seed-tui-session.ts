@@ -16,9 +16,11 @@ writeFileSync(join(cwd, "image.png"), testPng());
 const manager = SessionManager.create(cwd, join(root, "sessions"));
 const projection = new ActivityProjection();
 const tools = new Map(createDisplayTools(() => ({})).map(tool => [tool.name, tool]));
-const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
+const usage = { input: 0, output: 20, cacheRead: 0, cacheWrite: 0, totalTokens: 20, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
 type Message = Parameters<SessionManager["appendMessage"]>[0];
-function append(message: Message) { manager.appendMessage(message); projection.ingest(message); }
+const messages: Message[] = [];
+function append(message: Message) { messages.push(message); manager.appendMessage(message); projection.ingest(message); }
+projection.agentStarted(Date.now());
 append({ role: "user", content: "本地 TUI 验证：实际工具结果，没有模型请求。", timestamp: Date.now() });
 type Call = { id: string; name: string; args: Record<string, string | Array<{ oldText: string; newText: string }>> };
 async function batch(calls: Call[], thinking?: string) {
@@ -50,5 +52,6 @@ await batch([
 const final: Message = { role: "assistant", content: [{ type: "text", text: "验证结束。FINAL ANSWER：统计应在这段回答之后。" }], api: "openai-completions", provider: "openai", model: "gpt-4o", usage, stopReason: "stop", timestamp: Date.now() };
 append(final);
 projection.completed(final, Date.now());
+projection.agentEnded(messages, Date.now());
 manager.appendCustomEntry(ACTIVITY_ENTRY, projection.timingRecord());
 console.log(JSON.stringify({ cwd, agentDir, session: manager.getSessionFile() }));
