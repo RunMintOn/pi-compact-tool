@@ -28,13 +28,16 @@ test("first summary line reserves the link, bounds narrow rows and leaves the da
   const original = projection.summaryFor(final)!;
   projection.setChanges("assistant:2000", { label: "View changes", url: "file:///tmp/changes%20report.html" });
   const summary = projection.summaryFor(final)!;
+  const wideRow = renderActivitySummary(summary, theme, 100, 0)[1]!;
+  assert.match(stripTerminalSequences(wideRow), /write ×1  View changes$/);
+  assert.match(wideRow, /\x1b\[4mView changes\x1b\[24m/);
   for (const width of [1, 2, 8, 14, 20, 40, 100]) {
     for (const pad of [0, 1]) {
       const rows = renderActivitySummary(summary, theme, width, pad);
       assert.equal(rows.length, 3);
       assert.ok(rows.every(row => visibleWidth(row) <= width));
       assert.equal(rows[2], renderActivitySummary(original, theme, width, pad)[2]);
-      if (width - pad * 2 >= 12) {
+      if (width - pad * 2 >= 13) {
         assert.match(stripTerminalSequences(rows[1]!), /View changes$/);
         assert.match(rows[1]!, /file:\/\/\/tmp\/changes%20report\.html/);
       }

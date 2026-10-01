@@ -44,8 +44,44 @@ test("parallel groups follow tool-call messages, not thinking boundaries; summar
   assert.equal(p.isParallel("r1"), true);
 });
 
-test("TPS retains the original agent wall-time formula and event message usage, including replay", () => {
-  const p = fixture();
+test("request cost sums assistant totals once, rounds to three decimals and rebuilds from history", () => {
+  const p = new ActivityProjection();
+  const first = { ...assistant([call("cost-read")], 1100), usage: { ...usage, cost: { ...usage.cost, input: 0.1, output: 0.1, cacheRead: 0.1001, total: 0.3001 } } };
+  const final = { ...assistant([{ type: "text", text: "done" }], 2000, "stop"), usage: { ...usage, cost: { ...usage.cost, output: 0.3406, total: 0.3406 } } };
+  const messages = [{ role: "user", timestamp: 1000 }, first, { role: "toolResult", usage: { cost: { total: 99 } } }, final];
+  for (const message of messages) p.ingest(message);
+  p.ingest(first); p.ingest(final);
+  assert.equal(p.summaryFor(final)?.cost, 0.6407);
+  assert.match(plain(renderActivitySummary(p.summaryFor(final)!, colorTheme, 120)), /total 1s · \$0\.641 · tokens/);
+  const restored = new ActivityProjection();
+  restored.rebuild(messages.map(message => ({ type: "message", message })));
+  assert.equal(restored.summaryFor(final)?.cost, 0.6407);
+  for (const width of [1, 2, 20, 60, 100]) {
+    assert.ok(renderActivitySummary(restored.summaryFor(final)!, colorTheme, width).every(row => visibleWidth(row) <= width));
+  }
+  p.ingest({ role: "user", timestamp: 3000 });
+  p.ingest(assistant([call("next-read")], 3100));
+  const next = assistant([{ type: "text", text: "next" }], 4000, "stop");
+  p.ingest(next);
+  assert.equal(p.summaryFor(next)?.cost, 0);
+  assert.match(plain(renderActivitySummary(p.summaryFor(next)!, colorTheme, 120)), /\$0\.000/);
+  assert.equal(p.summaryFor(final)?.cost, 0.6407);
+});
+
+test("history without cost data omits the amount", () => {
+  const p = new ActivityProjection();
+  const { cost: _cost, ...uncostedUsage } = usage;
+  const first = { ...assistant([call("old-read")], 1100), usage: uncostedUsage };
+  const final = { ...assistant([{ type: "text", text: "old" }], 2000, "stop"), usage: uncostedUsage };
+  p.rebuild([first, final].map(message => ({ type: "message", message })));
+  assert.equal(p.summaryFor(final)?.cost, undefined);
+  assert.doesNotMatch(plain(renderActivitySummary(p.summaryFor(final)!, colorTheme, 120)), /\$/);
+});
+
+test("TPS excludes tool wall time and restores the new formula on replay", () => {
+  const p = new ActivityProjection();
+  p.ingest({ role: "user", timestamp: 1000 });
+  p.ingest(assistant([call("r1")], 1100));
   p.agentStarted(1000);
   p.started("r1", 2000); p.ended("r1", 12000);
   const final = assistant([{ type: "text", text: "done" }], 19000, "stop");
@@ -57,8 +93,9 @@ test("TPS retains the original agent wall-time formula and event message usage, 
     { ...final, usage: { ...usage, output: 300 } },
   ];
   p.agentEnded(messages, 21000);
-  assert.equal(p.summaryFor(final as any)?.tps, 45);
-  assert.match(plain(renderActivitySummary(p.summaryFor(final as any)!, colorTheme, 120)), /18s · TPS 45\.0 tok\/s · tokens/);
+  assert.equal(p.summaryFor(final as any)?.tps, 90);
+  assert.equal(p.summaryFor(final as any)?.toolMs, 10000);
+  assert.match(plain(renderActivitySummary(p.summaryFor(final as any)!, colorTheme, 120)), /total 18s \(tools 10s\) · TPS 90\.0 tok\/s · \$0\.000 · tokens/);
   for (const width of [1, 2, 20, 60, 100]) {
     assert.ok(renderActivitySummary(p.summaryFor(final as any)!, colorTheme, width).every(row => visibleWidth(row) <= width));
   }
@@ -69,7 +106,8 @@ test("TPS retains the original agent wall-time formula and event message usage, 
     { type: "message", message: final },
     { type: "custom", customType: ACTIVITY_ENTRY, data: p.timingRecord() },
   ]);
-  assert.equal(restored.summaryFor(final as any)?.tps, 45);
+  assert.equal(restored.summaryFor(final as any)?.tps, 90);
+  assert.equal(restored.summaryFor(final as any)?.toolMs, 10000);
   restored.rebuild([
     { type: "message", message: assistant([call("r1")], 1100) },
     { type: "message", message: final },
@@ -109,6 +147,68 @@ test("a continuation without output does not reuse the previous run's TPS", () =
   const next = { ...assistant([{ type: "text", text: "next" }], 5000, "stop"), usage: { ...usage, output: 0 } };
   p.ingest(next as any); p.agentEnded([next], 6000);
   assert.equal(p.summaryFor(next as any)?.tps, undefined);
+});
+
+test("parallel tool intervals are merged; serial intervals and failed/aborted results still count", () => {
+  const p = new ActivityProjection();
+  p.ingest({ role: "user", timestamp: 1000 });
+  const tools = assistant([call("a", "bash"), call("b"), call("c"), call("d")], 1100);
+  p.ingest(tools);
+  p.agentStarted(1000);
+  p.started("a", 2000); p.started("b", 3000); p.started("c", 4000);
+  p.ended("b", 5000); p.ended("c", 7000); p.ended("a", 6000);
+  p.started("d", 8000); p.ended("d", 10000, output("Operation aborted", true));
+  const final = assistant([{ type: "text", text: "done" }], 11000, "aborted");
+  p.ingest(final);
+  p.agentEnded([tools, final], 11000);
+  assert.equal(p.summaryFor(final)?.toolMs, 7000);
+  assert.equal(p.summaryFor(final)?.tps, 40 / 3);
+  p.ingest({ role: "user", timestamp: 12000 });
+  assert.equal(p.summaryFor(final)?.toolMs, 7000);
+});
+
+test("TPS clips tools to the agent run while displayed tools cover the user request", () => {
+  const p = new ActivityProjection();
+  p.ingest({ role: "user", timestamp: 1000 });
+  const firstTools = assistant([call("first")], 1100);
+  p.ingest(firstTools); p.started("first", 2000); p.ended("first", 4000);
+  const first = assistant([{ type: "text", text: "first" }], 5000, "stop");
+  p.ingest(first); p.agentStarted(1000); p.agentEnded([firstTools, first], 5000);
+  const nextTools = assistant([call("next")], 6000);
+  p.ingest(nextTools); p.started("next", 6000); p.ended("next", 10000);
+  const final = assistant([{ type: "text", text: "final" }], 12000, "stop");
+  p.ingest(final); p.agentStarted(7000); p.agentEnded([nextTools, final], 11000);
+  assert.equal(p.summaryFor(final)?.toolMs, 6000);
+  assert.equal(p.summaryFor(final)?.tps, 40);
+});
+
+test("missing tool timing and zero remaining model time omit TPS", () => {
+  for (const end of [undefined, 9000, 2000]) {
+    const p = new ActivityProjection();
+    p.ingest({ role: "user", timestamp: 1000 });
+    const tools = assistant([call("a")], 1100);
+    p.ingest(tools); p.started("a", 1000);
+    if (end !== undefined) p.ended("a", end);
+    const final = assistant([{ type: "text", text: "done" }], 2000, "stop");
+    p.ingest(final); p.agentStarted(1000); p.agentEnded([tools, final], 2000);
+    assert.equal(p.summaryFor(final)?.tps, undefined);
+    if (end === undefined) assert.equal(p.summaryFor(final)?.toolMs, undefined);
+  }
+});
+
+test("old persisted TPS is not displayed under the new formula; tool intervals remain usable", () => {
+  const p = new ActivityProjection();
+  const tools = assistant([call("a")], 1100);
+  const final = assistant([{ type: "text", text: "done" }], 5000, "stop");
+  p.rebuild([
+    { type: "message", message: { role: "user", timestamp: 1000 } },
+    { type: "message", message: tools }, { type: "message", message: final },
+    { type: "custom", customType: ACTIVITY_ENTRY, data: { calls: [{ id: "a", start: 2000, end: 4000, parallel: false }], finalKey: `assistant:${final.timestamp}`, start: 1000, end: 5000, tps: 10 } },
+  ]);
+  assert.equal(p.summaryFor(final)?.toolMs, 2000);
+  assert.equal(p.summaryFor(final)?.tps, undefined);
+  assert.match(plain(renderActivitySummary(p.summaryFor(final)!, colorTheme, 120)), /total 4s \(tools 2s\)/);
+  assert.doesNotMatch(plain(renderActivitySummary(p.summaryFor(final)!, colorTheme, 120)), /TPS/);
 });
 
 test("live execution events override inferred multi-call grouping for sequential execution", () => {
@@ -342,7 +442,7 @@ test("request statistics have one separator, no bold or background, and preserve
   assert.equal(rows[0], "");
   assert.match(stripTerminalSequences(rows[1]!), /^ 4 calls · 4 turns/);
   assert.doesNotMatch(plain(rows), /Tools/);
-  assert.match(stripTerminalSequences(rows[2]!), /^ 1s · tokens/);
+  assert.match(stripTerminalSequences(rows[2]!), /^ total 1s · \$0\.000 · tokens/);
   assert.doesNotMatch(rows[1]!, /\x1b\[1m/);
   assert.match(stripTerminalSequences(renderActivitySummary(p.summaryFor(final as any)!, colorTheme, 80, 0)[1]!), /^4 calls /);
   assert.ok(rows.every(row => !/\x1b\[(?:48[;:]|4[0-7]m)/.test(row)));

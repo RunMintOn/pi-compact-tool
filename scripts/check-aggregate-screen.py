@@ -40,7 +40,7 @@ summary = locate(r"6 calls · 5 turns")
 assert summary == locate(r"FINAL ANSWER") + 2, "Summary must follow the final answer with one blank row"
 assert not rows[summary - 1], "Expected one blank separator before statistics"
 assert not re.search(r"\x1b\[1m", raw_rows[summary]), "statistics must not be bold"
-stats = locate(r"TPS \d+\.\d tok/s · tokens ↑0 ↓100.*\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}")
+stats = locate(r"total (?:\d+m )?\d+s \(tools (?:\d+m )?\d+s\) · TPS \d+\.\d tok/s · \$0\.641 · tokens ↑0 ↓100.*\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}")
 assert not any("Tools" in text for text in rows.values()), "Statistics must not have a Tools label"
 assert stats == summary + 1, "Statistics must remain consecutive"
 for row in [summary, stats]:

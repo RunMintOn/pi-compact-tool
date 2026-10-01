@@ -16,7 +16,7 @@ writeFileSync(join(cwd, "image.png"), testPng());
 const manager = SessionManager.create(cwd, join(root, "sessions"));
 const projection = new ActivityProjection();
 const tools = new Map(createDisplayTools(() => ({})).map(tool => [tool.name, tool]));
-const usage = { input: 0, output: 20, cacheRead: 0, cacheWrite: 0, totalTokens: 20, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
+const usage = { input: 0, output: 20, cacheRead: 0, cacheWrite: 0, totalTokens: 20, cost: { input: 0, output: 0.1282, cacheRead: 0, cacheWrite: 0, total: 0.1282 } };
 type Message = Parameters<SessionManager["appendMessage"]>[0];
 const messages: Message[] = [];
 function append(message: Message) { messages.push(message); manager.appendMessage(message); projection.ingest(message); }

@@ -7,7 +7,7 @@ import { lineCount, panelLine, parallelLabel, SummaryLine, toolLabel } from "./r
 // Reversible layout patches join native thinking and tools into a display panel.
 // Native content, expansion state, mouse handlers and image protocols stay in charge.
 export const ACTIVITY_ENTRY = "compact-tool.activity.v1";
-type Message = { role: string; timestamp?: number; content?: unknown; stopReason?: string; toolCallId?: string; usage?: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number } };
+type Message = { role: string; timestamp?: number; content?: unknown; stopReason?: string; toolCallId?: string; usage?: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number; cost?: { total?: number } } };
 interface Call { id: string; name: string; }
 interface Batch { ids: string[]; observed: boolean; }
 interface ToolRegion { ids: string[]; }
@@ -19,8 +19,10 @@ export interface ActivitySummary {
   turns: number;
   counts: Map<string, number>;
   usage: { input: number; output: number; cacheRead: number; cacheWrite: number };
+  cost?: number;
   start?: number;
   end?: number;
+  toolMs?: number;
   tps?: number;
 }
 interface Request extends ActivitySummary { ids: string[]; finalKey?: string; }
@@ -30,6 +32,7 @@ export interface TimingRecord {
   start?: number;
   end?: number;
   tps?: number;
+  tpsBasis?: "excluding-tools";
 }
 function calls(message: Message): Call[] {
   if (!Array.isArray(message.content)) return [];
@@ -58,8 +61,12 @@ export class ActivityProjection {
   agentStarted(now: number): void { this.agentStartMs = now; }
   agentEnded(messages: readonly Message[], now: number): void {
     if (this.agentStartMs === null) return;
-    const elapsedMs = now - this.agentStartMs;
+    const start = this.agentStartMs;
     this.agentStartMs = null;
+    const ids = messages.flatMap(message => message.role === "assistant" ? calls(message).map(call => call.id) : []);
+    const toolMs = this.toolWallMs(ids, start, now);
+    if (toolMs === undefined) return;
+    const elapsedMs = now - start - toolMs;
     if (elapsedMs <= 0) return;
     const output = messages.reduce((total, message) => total + (message.role === "assistant" ? message.usage?.output || 0 : 0), 0);
     if (output <= 0) return;
@@ -85,6 +92,7 @@ export class ActivityProjection {
     request.tps = undefined;
     request.turns++;
     for (const metric of ["input", "output", "cacheRead", "cacheWrite"] as const) request.usage[metric] += message.usage?.[metric] ?? 0;
+    if (message.usage?.cost?.total !== undefined) request.cost = (request.cost ?? 0) + message.usage.cost.total;
     const toolCalls = calls(message);
     const batch = { ids: toolCalls.map(call => call.id), observed: false };
     const addNode = (id: string) => {
@@ -204,17 +212,36 @@ export class ActivityProjection {
   }
   setChanges(finalKey: string, link: ChangeLink): void { this.changes.set(finalKey, link); }
   clearChanges(): void { this.changes.clear(); }
+  private toolWallMs(ids: readonly string[], lower = -Infinity, upper = Infinity): number | undefined {
+    const intervals: Array<[number, number]> = [];
+    for (const id of new Set(ids)) {
+      const timing = this.timings.get(id);
+      if (timing?.start === undefined || timing.end === undefined) return undefined;
+      if (!Number.isFinite(timing.start) || !Number.isFinite(timing.end) || timing.end < timing.start) return undefined;
+      const start = Math.max(lower, timing.start);
+      const end = Math.min(upper, timing.end);
+      if (end > start) intervals.push([start, end]);
+    }
+    intervals.sort((a, b) => a[0] - b[0]);
+    let total = 0;
+    let previousEnd = -Infinity;
+    for (const [start, end] of intervals) {
+      total += Math.max(0, end - Math.max(start, previousEnd));
+      previousEnd = Math.max(previousEnd, end);
+    }
+    return total;
+  }
   summaryFor(message: Message): ActivitySummary | undefined {
     const messageKey = key(message);
     const request = this.summaries.get(messageKey);
-    return request?.calls ? { ...request, changes: this.changes.get(messageKey) } : undefined;
+    return request?.calls ? { ...request, toolMs: this.toolWallMs(request.ids, request.start, request.end), changes: this.changes.get(messageKey) } : undefined;
   }
   timingRecord(): TimingRecord {
     const request = this.current;
     return { calls: (request?.ids ?? []).flatMap(id => {
       const timing = this.timings.get(id);
       return timing ? [{ id, ...timing }] : [];
-    }), finalKey: request?.finalKey, start: request?.start, end: request?.end, tps: request?.tps };
+    }), finalKey: request?.finalKey, start: request?.start, end: request?.end, tps: request?.tps, tpsBasis: "excluding-tools" };
   }
   restoreTiming(record: TimingRecord): void {
     if (!Array.isArray(record.calls)) return;
@@ -223,7 +250,7 @@ export class ActivityProjection {
       if (batch) { batch.observed = true; this.timings.set(timing.id, timing); }
     }
     const request = record.finalKey ? this.summaries.get(record.finalKey) : undefined;
-    if (request) { request.start = record.start ?? request.start; request.end = record.end ?? request.end; request.tps = record.tps; }
+    if (request) { request.start = record.start ?? request.start; request.end = record.end ?? request.end; request.tps = record.tpsBasis === "excluding-tools" ? record.tps : undefined; }
   }
 }
 
@@ -231,6 +258,10 @@ function tokens(count: number): string {
   if (count < 1000) return String(count);
   if (count < 1_000_000) return `${Number((count / 1000).toFixed(1))}k`;
   return `${Number((count / 1_000_000).toFixed(1))}M`;
+}
+function duration(ms: number): string {
+  const seconds = Math.max(0, Math.round(ms / 1000));
+  return seconds >= 60 ? `${Math.floor(seconds / 60)}m ${seconds % 60}s` : `${seconds}s`;
 }
 function clock(ms: number): string {
   const date = new Date(ms);
@@ -243,10 +274,11 @@ export function renderActivitySummary(summary: ActivitySummary, theme: Theme, wi
   const heading = `${theme.fg("muted", `${summary.calls} calls · ${summary.turns} turns`)} · ${counts}`;
   const parts: string[] = [];
   if (summary.start !== undefined && summary.end !== undefined) {
-    const seconds = Math.max(0, Math.round((summary.end - summary.start) / 1000));
-    parts.push(seconds >= 60 ? `${Math.floor(seconds / 60)}m ${seconds % 60}s` : `${seconds}s`);
+    const tools = summary.toolMs !== undefined ? ` (tools ${duration(summary.toolMs)})` : "";
+    parts.push(`total ${duration(summary.end - summary.start)}${tools}`);
   }
   if (summary.tps !== undefined) parts.push(`TPS ${summary.tps.toFixed(1)} tok/s`);
+  if (summary.cost !== undefined) parts.push(`$${summary.cost.toFixed(3)}`);
   parts.push(`tokens ↑${tokens(summary.usage.input)} ↓${tokens(summary.usage.output)}`);
   if (summary.usage.cacheRead) parts.push(`cache read ${tokens(summary.usage.cacheRead)}`);
   if (summary.usage.cacheWrite) parts.push(`cache write ${tokens(summary.usage.cacheWrite)}`);
@@ -255,7 +287,7 @@ export function renderActivitySummary(summary: ActivitySummary, theme: Theme, wi
   const stats = new SummaryLine(theme.fg("muted", parts.join(" · ")), date).render(contentWidth)[0] ?? "";
   const change = summary.changes;
   const label = change?.url && contentWidth < 12 ? "Changes" : change?.label ?? "";
-  const suffix = change?.url ? hyperlink(theme.fg("accent", label), change.url) : theme.fg("muted", label);
+  const suffix = change?.url ? " " + hyperlink(`\x1b[4m${theme.fg("accent", label)}\x1b[24m`, change.url) : theme.fg("muted", label);
   const first = new SummaryLine(heading, suffix).render(contentWidth)[0] ?? "";
   return ["", ...[first, stats].map(text => truncateToWidth(" ".repeat(outputPad) + truncateToWidth(text, contentWidth, "…"), width, "…"))];
 }

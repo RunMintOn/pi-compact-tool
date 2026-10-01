@@ -80,18 +80,23 @@ test("actual Pi session loads the extension, retains active tools and switches e
       await runner.emit({ type: "message_end", message: toolMessage });
       now = 2000;
       await runner.emit({ type: "tool_execution_start", toolCallId: "tps-read", toolName: "read", args: { path: "sample.txt" } });
+      now = 3000;
+      await runner.emit({ type: "tool_execution_start", toolCallId: "tps-read/0", toolName: "bash", args: {}, parentToolCallId: "tps-read" });
+      now = 11000;
+      await runner.emit({ type: "tool_execution_end", toolCallId: "tps-read/0", toolName: "bash", result: {}, isError: false, parentToolCallId: "tps-read" });
       now = 12000;
       await runner.emit({ type: "tool_execution_end", toolCallId: "tps-read", toolName: "read", result: { content: [{ type: "text", text: "one" }] }, isError: false });
       now = 21000;
       await runner.emit({ type: "message_end", message: final });
       await runner.emit({ type: "agent_end", messages: [user, toolMessage, final] });
       const rendered = new AssistantMessageComponent(final as any, true).render(120).map(stripTerminalSequences).join("\n");
-      assert.match(rendered, /20s · TPS 45\.0 tok\/s/);
+      assert.match(rendered, /total 20s \(tools 10s\) · TPS 90\.0 tok\/s · \$0\.000/);
       assert.doesNotMatch(rendered, /Tools/);
       assert.equal(notices.length, noticeCount);
       await runner.emit({ type: "agent_settled" });
       const record = session.sessionManager.getBranch().find(entry => entry.type === "custom" && entry.customType === "compact-tool.activity.v1");
-      assert.equal((record as any)?.data.tps, 45);
+      assert.equal((record as any)?.data.tps, 90);
+      assert.equal((record as any)?.data.tpsBasis, "excluding-tools");
     } finally { clock.mock.restore(); }
     await session.reload();
     assert.deepEqual(session.getActiveToolNames().sort(), ["bash", "edit", "read", "write"]);
