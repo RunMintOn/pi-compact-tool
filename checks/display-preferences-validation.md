@@ -84,3 +84,14 @@ CPU profile 中主要开销为 `truncateToWidth`、文字区域排版和隐藏�
 - A/B 只影响收起展示，thinking 开关独立；全局偏好恢复和 tidy / claude 不变均已验证。
 - 图片结论限于实测 CPU 路径，不宣称真实终端卡顿已完全解决。
 - 最终无未解决的 Spec findings。
+
+## 后续：工具名快速试色
+
+- 起点 commit：`84fb61f`。codemode 默认琥珀色，Bash 默认保留原绿色。
+- 新增 `/tool-color bash|codemode [color|reset]`。省略颜色循环切换；无参数显示当前值和用法。支持 green / blue / cyan / purple / amber / orange / pink / gray。
+- 仅当前会话的 aggregate 工具名及统计中的工具名称生效；已有工具行刷新并保留展开状态。reload 或新会话恢复默认，不修改已保存的 A/B 和 thinking 偏好。失败颜色仍优先，原生完整展开的 codemode 内容保持原样。
+- 使用明／暗两套颜色，不新增依赖或持久化设置。
+- 串行 Standards / Spec 自审无未解决问题。
+- `npm run check`：typecheck 与完整 66 项测试通过。覆盖默认琥珀、明确选择、循环、reset、非法参数、真实 ANSI 颜色、浅色主题、失败颜色优先、tidy / claude 不变、展开状态保留及 reload 重置。
+- `npm run test:display-tui`：真实 fullscreen 试色／reset、A/B、点击及 thinking 回归通过，没有模型请求。
+- 本次日志：`/tmp/pi-compact-color-check.log`、`/tmp/pi-compact-color-tui.log`。fullscreen 结果：`/var/folders/zh/qf_nccyd0_b0fc84rk8dl4lm0000gp/T/pi-compact-display-results-RToqIV/`。

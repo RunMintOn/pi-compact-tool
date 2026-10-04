@@ -1,5 +1,6 @@
 import { backgroundAnsi, Box, parseColor, stripTerminalSequences, Text, truncateToWidth, visibleWidth, type Component } from "@earendil-works/pi-tui";
 import type { Theme } from "@earendil-works/pi-coding-agent";
+import { getToolColor, type ToolColor } from "./state.ts";
 
 export function cleanText(text: string): string {
   return stripTerminalSequences(text).replace(/\r/g, "").replace(/\t/g, "   ").replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]/g, "");
@@ -78,11 +79,24 @@ const toolColors = {
   dark: { read: parseColor("#93c2b3"), edit: parseColor("#b59bd5"), bash: parseColor("#7dbfa6") },
   light: { read: parseColor("#326d5c"), edit: parseColor("#76509a"), bash: parseColor("#326d5c") },
 };
+const previewColors: Record<Theme["appearance"], Record<ToolColor, ReturnType<typeof parseColor>>> = {
+  dark: {
+    green: toolColors.dark.bash, purple: toolColors.dark.edit,
+    amber: parseColor("#d6b273"), blue: parseColor("#8eafd2"), cyan: parseColor("#86bec7"),
+    orange: parseColor("#d4a080"), pink: parseColor("#cd9eb8"), gray: parseColor("#b4beb8"),
+  },
+  light: {
+    green: toolColors.light.bash, purple: toolColors.light.edit,
+    amber: parseColor("#916315"), blue: parseColor("#38648c"), cyan: parseColor("#26717e"),
+    orange: parseColor("#965b2c"), pink: parseColor("#935678"), gray: parseColor("#526058"),
+  },
+};
 const parallelColors = { dark: parseColor("#a5b6c6"), light: parseColor("#536879") };
 export function parallelLabel(theme: Theme): string {
   return theme.style("parallel", { fg: parallelColors[theme.appearance] });
 }
 export function toolLabel(name: string, text: string, theme: Theme): string {
+  if (name === "bash" || name === "codemode") return theme.style(text, { fg: previewColors[theme.appearance][getToolColor(name)] });
   const kind = name === "edit" || name === "write" ? "edit" : name === "bash" ? "bash" : "read";
   return theme.style(text, { fg: toolColors[theme.appearance][kind] });
 }

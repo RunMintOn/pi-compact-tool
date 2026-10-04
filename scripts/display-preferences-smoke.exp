@@ -31,6 +31,10 @@ proc check {stage} {
 }
 settle
 check compact
+command "/tool-color codemode blue" {codemode 工具名颜色：blue}
+check compact
+command "/tool-color codemode reset" {codemode 工具名颜色：amber}
+check compact
 command "/codemode-view calls" {codemode 展示：calls}
 check calls
 log_file
@@ -63,4 +67,4 @@ send -- "\004"
 expect { eof {} timeout { puts stderr "Pi did not exit"; exit 1 } }
 set result [wait]
 if {[lindex $result 3] != 0} { exit 1 }
-puts "PASS fullscreen preference commands, nested row click, expansion independence, thinking removal and reload (no model request)"
+puts "PASS fullscreen color preview/reset, preference commands, nested row click, expansion independence, thinking removal and reload (no model request)"

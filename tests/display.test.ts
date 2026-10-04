@@ -9,7 +9,7 @@ import { getCapabilities, setCapabilities, visibleWidth, type TuiMouseEvent } fr
 import type { TSchema } from "typebox";
 import { testPng } from "./helpers/image.ts";
 import { decorateTool } from "../src/display.ts";
-import { resetDisplayState, setDisplayStyle, type DisplayContext } from "../src/state.ts";
+import { resetDisplayState, setDisplayStyle, setToolColor, type DisplayContext } from "../src/state.ts";
 
 initTheme("dark", false);
 const theme = { fg: (_: string, text: string) => text, bg: (_: string, text: string) => text, bold: (text: string) => text } as unknown as Theme;
@@ -170,6 +170,31 @@ test("the real Pi tool component supports per-row click and live style switching
   assert.ok(requests > 0);
   assert.equal(row.handleMouse(event)?.handled, true);
   assert.doesNotMatch(plain(row.render(100).join("\n")), /second/);
+});
+
+test("tool color previews adapt to light themes, preserve failure colors and leave other styles unchanged", () => {
+  resetDisplayState("aggregate");
+  initTheme("light", false);
+  try {
+    const definition = decorateTool(createBashToolDefinition(process.cwd()));
+    const row = new ToolExecutionComponent("bash", "light-color", { command: "echo test" }, {}, definition, { requestRender() {} } as any, process.cwd());
+    row.updateResult({ ...output, isError: false });
+    setToolColor("bash", "amber");
+    assert.match(row.render(80).join("\n"), /\x1b\[38;2;145;99;21mbash/);
+    setDisplayStyle("tidy");
+    const tidy = row.render(80).join("\n");
+    setToolColor("bash", "pink");
+    assert.equal(row.render(80).join("\n"), tidy);
+    setDisplayStyle("claude");
+    const claude = row.render(80).join("\n");
+    setToolColor("bash", "blue");
+    assert.equal(row.render(80).join("\n"), claude);
+    setDisplayStyle("aggregate");
+    row.updateResult({ ...output, isError: true });
+    const failed = row.render(80).join("\n");
+    setToolColor("bash", "cyan");
+    assert.equal(row.render(80).join("\n"), failed);
+  } finally { initTheme("dark", false); resetDisplayState("aggregate"); }
 });
 
 test("multiline commands stay on one collapsed row", () => {
