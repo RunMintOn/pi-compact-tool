@@ -1,0 +1,17 @@
+import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { SessionManager } from "@earendil-works/pi-coding-agent";
+
+const root = mkdtempSync(join(tmpdir(), "pi-compact-display-"));
+const cwd = join(root, "workspace");
+const agentDir = join(root, "agent");
+mkdirSync(cwd); mkdirSync(agentDir);
+writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ quietStartup: true, hideThinkingBlock: true, terminal: { showImages: false }, enableAnalytics: false, enableInstallTelemetry: false }));
+const session = SessionManager.create(cwd, join(root, "sessions"));
+const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
+session.appendMessage({ role: "user", content: "Display preference replay (no model calls)", timestamp: 1000 });
+session.appendMessage({ role: "assistant", content: [{ type: "thinking", thinking: "PRIVATE THOUGHT" }, { type: "toolCall", id: "display-code", name: "codemode", arguments: { code: "const answer = 42;\ntext('SCRIPT BODY');" } }], api: "openai-completions", provider: "openai", model: "test", usage, stopReason: "toolUse", timestamp: 1100 });
+session.appendMessage({ role: "toolResult", toolCallId: "display-code", toolName: "codemode", content: [{ type: "text", text: "Script completed\nWall time 0.1 seconds\nOutput:\n" }, { type: "text", text: "SCRIPT OUTPUT" }], details: { calls: [{ name: "read", args: '{"path":"NESTED FILE"}', status: "ok", durationMs: 5 }, { name: "bash", args: '{"command":"NESTED COMMAND"}', status: "error", durationMs: 10, error: "NESTED ERROR" }] }, isError: false, timestamp: 1200 });
+session.appendMessage({ role: "assistant", content: [{ type: "text", text: "DISPLAY FINAL ANSWER" }], api: "openai-completions", provider: "openai", model: "test", usage, stopReason: "stop", timestamp: 1300 });
+console.log(JSON.stringify({ cwd, agentDir, session: session.getSessionFile() }));

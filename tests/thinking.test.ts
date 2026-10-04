@@ -4,7 +4,7 @@ import { AssistantMessageComponent, ToolExecutionComponent, createReadToolDefini
 import { stripTerminalSequences, visibleWidth, type TuiMouseEvent } from "@earendil-works/pi-tui";
 import { ActivityProjection, installActivityUI } from "../src/activity.ts";
 import { decorateTool } from "../src/display.ts";
-import { resetDisplayState, setDisplayStyle } from "../src/state.ts";
+import { resetDisplayState, setDisplayStyle, setShowThinking } from "../src/state.ts";
 
 initTheme("dark", false);
 const theme = { appearance: "dark", getColorMode: () => "truecolor", fg: (_: string, text: string) => text, style: (text: string) => text, bold: (text: string) => text } as unknown as Theme;
@@ -19,6 +19,67 @@ function tool(id: string) {
   row.updateResult({ content: [{ type: "text", text: "one" }], details: undefined, isError: false });
   return row;
 }
+
+test("hidden thinking leaves serial tools contiguous and preserves parallel section spacing and native expansion", () => {
+  resetDisplayState("aggregate");
+  const p = new ActivityProjection();
+  const first = message([think("first secret"), call("a")], 1000);
+  const second = message([think("second secret"), call("b")], 1100);
+  const parallel = message([think("parallel secret"), call("c"), call("d")], 1200);
+  const tail = message([think("tail secret"), call("e")], 1300);
+  for (const m of [first, second, parallel, tail]) p.ingest(m as any);
+  const release = installActivityUI(p, () => theme);
+  try {
+    const assistant = new AssistantMessageComponent(first as any, true);
+    const before = assistant.render(80);
+    assistant.handleMouse(click(2, before.length));
+    assert.match(text(assistant.render(80)).join("\n"), /first secret/);
+    const a = tool("a"); const b = tool("b"); const c = tool("c"); const d = tool("d"); const e = tool("e");
+    setShowThinking(false);
+    assert.deepEqual(assistant.render(80), []);
+    for (const m of [second, parallel, tail]) assert.deepEqual(new AssistantMessageComponent(m as any, true).render(80), []);
+    assert.deepEqual(text([...a.render(80), ...b.render(80), ...c.render(80), ...d.render(80), ...e.render(80)]), ["", "", " read  a 1 line", " read  b 1 line", "", " parallel · 2 calls", " read  c 1 line", " read  d 1 line", "", " read  e 1 line", ""]);
+    p.ingest(message([think("new secret"), call("f")], 1400) as any);
+    assert.deepEqual(text(e.render(80)), ["", " read  e 1 line"]);
+    assert.deepEqual(text(tool("f").render(80)), [" read  f 1 line", ""]);
+    setDisplayStyle("tidy");
+    assert.match(text(assistant.render(80)).join("\n"), /first secret/);
+    setDisplayStyle("aggregate");
+    assert.deepEqual(assistant.render(80), []);
+    setShowThinking(true);
+    assert.match(text(assistant.render(80)).join("\n"), /first secret/);
+    assert.equal(assistant.handleMouse(click(2, assistant.render(80).length))?.handled, true);
+    assert.match(text(assistant.render(80)).join("\n"), /Thinking/);
+  } finally { release(); resetDisplayState("aggregate"); }
+});
+
+test("hidden standalone and streamed thinking retains normal text, errors and final statistics", () => {
+  resetDisplayState("aggregate");
+  const p = new ActivityProjection();
+  const release = installActivityUI(p, () => theme);
+  try {
+    setShowThinking(false);
+    const streaming = new AssistantMessageComponent(undefined, true);
+    streaming.updateContent(message([think("streamed secret")], 1000) as any, true);
+    assert.deepEqual(streaming.render(80), []);
+    streaming.updateContent(message([think("streamed secret"), { type: "text", text: "public reply" }], 1000, "stop") as any, false);
+    assert.deepEqual(text(streaming.render(80)), ["", " public reply"]);
+    const mixed = new AssistantMessageComponent(message([{ type: "text", text: "before" }, think("secret"), { type: "text", text: "after" }], 2000, "stop") as any, false);
+    assert.deepEqual(text(mixed.render(80)), ["", " before", " after"]);
+    const error = new AssistantMessageComponent({ ...message([think("secret")], 2000, "error"), errorMessage: "provider failed" } as any, false);
+    assert.match(text(error.render(80)).join("\n"), /provider failed/);
+    assert.doesNotMatch(text(error.render(80)).join("\n"), /secret|Thinking/);
+    p.ingest(message([call("a")], 1000) as any);
+    const final = message([think("final secret"), { type: "text", text: "final reply" }], 2000, "stop");
+    p.ingest(final as any);
+    const renderedFinal = text(new AssistantMessageComponent(final as any, true).render(100));
+    assert.equal(renderedFinal[0], "");
+    const finalRows = renderedFinal.join("\n");
+    assert.match(finalRows, /final reply/);
+    assert.match(finalRows, /1 call/);
+    assert.doesNotMatch(finalRows, /secret|Thinking/);
+  } finally { release(); resetDisplayState("aggregate"); }
+});
 
 test("thinking and tools share one panel without connection spacers, retaining native clicks and style switching", () => {
   resetDisplayState("aggregate");

@@ -147,27 +147,31 @@ class AggregateShell implements Component {
   private theme!: Theme;
   private summary = "";
   private body?: Component;
+  private cached?: { width: number; padding: number; bashLines?: number; rows: string[] };
   call(name: string, displayTarget: string, theme: Theme, context: DisplayContext): void {
     this.name = name; this.target = displayTarget; this.theme = theme; this.context = context;
-    this.summary = ""; this.body = undefined;
+    this.summary = ""; this.body = undefined; this.cached = undefined;
   }
-  result(text: string, body?: Component): void { this.summary = text; this.body = body; }
+  result(text: string, body?: Component): void { this.summary = text; this.body = body; this.cached = undefined; }
   render(width: number): string[] {
     if (width < 1) return [];
+    const padding = transcriptPadding();
+    const bashLines = this.name === "bash" && !this.context.isPartial ? bashOutputLines(this.context.toolCallId) : undefined;
+    if (this.cached?.width === width && this.cached.padding === padding && this.cached.bashLines === bashLines) return this.cached.rows;
     const theme = this.theme;
     const error = this.context.isError;
     const label = (error ? theme.fg("error", this.name.padEnd(5)) : toolLabel(this.name, this.name.padEnd(5), theme)) + " ";
     const target = theme.fg(error ? "error" : "text", this.target);
-    const bashLines = this.name === "bash" && !this.context.isPartial ? bashOutputLines(this.context.toolCallId) : undefined;
     const summary = bashLines === undefined ? this.summary : this.summary.replace(/^\d+ lines?/, plural(bashLines, "line"));
     const suffix = summary ? theme.fg("muted", summary) : "";
-    const padding = transcriptPadding();
     const header = new SummaryLine(label + target, suffix).render(Math.max(1, width - padding * 2))[0] ?? "";
     const rows = [truncateToWidth(" ".repeat(padding) + header, width, "…")];
     if (this.body) rows.push(...this.body.render(Math.max(1, width - 3)).map(row => truncateToWidth("   " + row, width, "…")));
-    return rows.map(row => panelLine(row, width, theme));
+    const painted = rows.map(row => panelLine(row, width, theme));
+    this.cached = { width, padding, bashLines, rows: painted };
+    return painted;
   }
-  invalidate(): void { this.body?.invalidate(); }
+  invalidate(): void { this.cached = undefined; this.body?.invalidate(); }
 }
 function aggregateShell(context: DisplayContext): AggregateShell {
   const state = context.state as { compactAggregate?: AggregateShell };

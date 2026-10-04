@@ -48,6 +48,23 @@ pi -ne -e ./index.ts --tui-mode fullscreen --compact-style tidy
 
 `/compact` 是 Pi 的上下文压缩命令，本项目不占用它。`Ctrl+O` 仍是 Pi 的全局展开操作，本项目的主要交互是 fullscreen 单条点击。普通终端滚动模式不提供同样的点击交互。
 
+## aggregate 展示偏好
+
+```text
+/codemode-view          切换 A / B
+/codemode-view compact  A：codemode 收起时只显示一行（默认）
+/codemode-view calls    B：摘要下完整显示原生嵌套调用区域
+/tool-thinking         切换 thinking 显示／隐藏
+/tool-thinking show    显示 thinking（默认，沿用原生展开状态）
+/tool-thinking hide    隐藏全部 thinking，包括独立与运行中的 thinking
+```
+
+两项设置独立，仅影响 aggregate。切换立即刷新已有记录，不改变单条工具的展开状态。B 不显示脚本及输出正文；调用列表保留原生展开时的参数、换行、状态、耗时、错误与费用信息，全部调用显示，并实时更新运行状态。无嵌套调用时 A / B 都保持单行。点击摘要或任意调用行展开整个 codemode，再次收起时恢复所选 A / B；`Ctrl+O` 保持原生全局展开操作。
+
+隐藏 thinking 不修改模型思考设置或消息内容，不显示 `Thinking...` 占位，也不留下空行。串行工具连续排列；parallel 组保留分组间距。重新显示时保留 thinking 原有展开状态，普通正文、错误及最终统计不受影响。tidy / claude 保持原生 thinking 展示。
+
+命令自动保存到 `getAgentDir()/extension-data/pi-compact-tool/preferences.json`，通常为 `~/.pi/agent/extension-data/pi-compact-tool/preferences.json`。所有项目共用，跨新会话和 reload 恢复；首次默认 A + thinking 显示。`/tool-style` 仍不持久化。保存失败时报告错误，不改变当前偏好。
+
 ## 查看本轮修改
 
 在 TUI 会话里，Edit / Write 第一次真正写入某个文件前保存起点快照。整轮任务完全结束后，只读取这些文件的最终内容，生成独立 HTML 页面。同一文件多次编辑合并成一份净 diff；恢复原样的文件不计入净修改。不扫描仓库，不使用 Git HEAD 作为基准。路径解析、编辑规则和文件写入队列仍由官方工具处理；快照通过官方文件操作接口记录，不改变工具结果或模型上下文。
@@ -79,18 +96,20 @@ aggregate 统计第一行在工具枚举后显示 **View changes**。宽度不�
 - 费用显示为 `$0.641`，保留三位小数。从当前用户消息到这次回答结束，累加其间所有 assistant 消息的 `usage.cost.total`，包含中间多次模型调用，不累计之前消息的费用。金额使用 Pi 已记录的美元费用估算，不额外查询账单或自行计算价格；每条新用户消息重新计费。reload 从消息 usage 恢复，旧记录缺少费用数据时不显示金额。
 - Bash 行数优先统计官方提供的输出数据，不把 `(no output)` 和退出状态说明算成命令输出。忽略末尾换行，不计算终端自动折行。输出已被官方工具截断时显示 `truncated`，使用其输出行数元数据，不读取完整输出文件。旧记录没有保存行数时，回退为收到的文字结果行数；可能包含原生状态说明。
 - aggregate 使用样稿的低对比度底色和绿／紫工具名配色，按主题的深浅模式和终端颜色能力显示。工具区域中的 Think 前保留一行同底色空白，后面紧贴工具；区域开头复用顶部留白，共用一个连续区域；区域与普通正文之间保留一行，色块内部上下各有一行留白，所有工具名与正文左对齐，遵循原生 `outputPad`（默认 1 列，可设为 0），不保留竖线或额外左侧标记空间。parallel 组前显示低饱和蓝灰色的 `parallel · N calls` 标题，标题紧贴下面的工具。组前及组后接普通工具时，各保留一行同底色空白；相邻 parallel 组之间只有一行空白。区域首尾复用已有留白，不叠加。普通串行工具仍紧贴排列，整段背景不按组拆分。截断或高亮产生的 ANSI reset 后恢复区域底色，避免摘要出现黑底缺口。
-- aggregate 通过可撤销的原生工具 `render/handleMouse` 和 assistant `render` patch 去掉区域内部的逐条空白、追加末尾统计。只在 TUI 会话安装，reload / shutdown 恢复，只装饰 Think 背景和布局，点击转发给原生 MouseRegion；不修改 Think 内容、折叠状态、图片协议或工具执行逻辑。
+- aggregate 通过可撤销的原生工具 `render/handleMouse` 和 assistant `render` patch 去掉区域内部的逐条空白、追加末尾统计。只在 TUI 会话安装，reload / shutdown 恢复，装饰 Think 背景和布局，并可隐藏其显示，点击转发给原生 MouseRegion；不修改 Think 内容、折叠状态、图片协议或工具执行逻辑。
 
 ## 图片
 
 保留 Pi 的图片协议、显示开关和转换行为。文字收起时图片仍可能显示；这和 Pi 原生行为一致。图片像素是否能显示，取决于终端支持和 Pi 的图片设置。aggregate 中图片仍位于所属工具后面：图片前补一行同底色底部留白，图片后还有同区域工具时补一行顶部留白；复用已有分段留白，不重复添加。没有将图片集中移到工具区域末尾。
+
+针对多图滚动增加了 aggregate 文字排版缓存和隐藏 thinking 的区域节点缓存，避免每帧重复截断、着色及过滤。没有修改图片协议、转换、上传或原生缓存。300 张 PNG 的本地 fullscreen CPU 对照及限制见 [展示与性能验证](./checks/display-preferences-validation.md)；测量不包含真实终端的图片解码和绘制，不能据此认定所有滑动卡顿已消除。
 
 ## 自定义工具
 
 `ffgrep`、`fffind`、`codemode` 在 TUI 中自动接入，无需修改它们的插件或注册代码。适配集中在 `src/custom-tools.ts`，只替换显示组件使用的工具定义，不修改工具注册表、执行函数、schema、exposure 或激活状态；shutdown / reload 恢复原 renderer。
 
 - `ffgrep` 收起显示 pattern、path 和 `totalMatched` 匹配数；`fffind` 使用文件数。旧结果缺少元数据时显示结果行数，展开查看完整输出。
-- `codemode` 收起显示代码首行和内部调用数；无内部调用时显示脚本输出行数，不计原生状态头。展开保留原生完整脚本、内部调用状态与输出。统计仍只计顶层 codemode 调用，内部调用不冒充独立 parallel 组。
+- `codemode` 默认收起显示代码首行和内部调用数；aggregate 的 B 模式另显示完整原生内部调用区域。无内部调用时显示脚本输出行数，不计原生状态头。展开保留原生完整脚本、内部调用状态与输出。统计仍只计顶层 codemode 调用，内部调用不冒充独立 parallel 组。
 - 不自动启用这些工具。其他未接入工具保持原 renderer。
 
 其他自定义工具需要接管展示时，在原有 `pi.registerTool()` 处包装工具定义：
@@ -129,9 +148,10 @@ pi.registerTool(decorateTool(existingSearchTool, {
 npm install --ignore-scripts --legacy-peer-deps
 npm run check
 npm run test:tui  # 需要 expect、python3 和 pi
+npm run test:display-tui  # 验证 A/B、点击、thinking 显隐及偏好恢复
 npm run test:changes-ui  # 需要 ego-browser，HTML、结果和截图保存在 worktree 外
 ```
 
 开发环境需让本项目能解析 Pi 宿主包和 `typebox`。本机验证使用已有 Pi 安装的软链接，未另外安装一份 Pi。
 
-本轮净 diff 测试和浏览器检查见 [修改查看验证](./checks/changes-validation.md)。当前布局细调、自定义工具接入、42 项测试与真实 fullscreen 检查见 [本轮验证记录](./checks/polish-validation.md)。此前 Think 融合见 [Think 验证记录](./checks/thinking-validation.md)。此前左对齐与分组标题见 [布局验证记录](./checks/parallel-heading-validation.md)。此前底色与留白修复见 [视觉修复记录](./checks/visual-fix-validation.md)。第一版聚合实现保留在 [聚合验证记录](./checks/aggregate-validation.md)。原逐条版本的验证保留在 [历史验证记录](./checks/project-3-validation.md)。MIT 许可证见 [LICENSE](./LICENSE)。
+本次展示偏好及多图性能检查见 [展示与性能验证](./checks/display-preferences-validation.md)。本轮净 diff 测试和浏览器检查见 [修改查看验证](./checks/changes-validation.md)。当前布局细调、自定义工具接入、42 项测试与真实 fullscreen 检查见 [本轮验证记录](./checks/polish-validation.md)。此前 Think 融合见 [Think 验证记录](./checks/thinking-validation.md)。此前左对齐与分组标题见 [布局验证记录](./checks/parallel-heading-validation.md)。此前底色与留白修复见 [视觉修复记录](./checks/visual-fix-validation.md)。第一版聚合实现保留在 [聚合验证记录](./checks/aggregate-validation.md)。原逐条版本的验证保留在 [历史验证记录](./checks/project-3-validation.md)。MIT 许可证见 [LICENSE](./LICENSE)。

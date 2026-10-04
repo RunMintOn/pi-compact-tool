@@ -48,6 +48,23 @@ pi -ne -e ./index.ts --tui-mode fullscreen --compact-style tidy
 
 `/compact` remains Pi's context-compaction command. `Ctrl+O` remains Pi's global expansion action; per-row fullscreen clicking is this extension's main interaction. Regular terminal-scrollback mode does not provide the same mouse interaction.
 
+## Aggregate display preferences
+
+```text
+/codemode-view          Toggle A / B
+/codemode-view compact  A: one collapsed codemode row (default)
+/codemode-view calls    B: summary plus the complete native nested-call region
+/tool-thinking         Toggle thinking visibility
+/tool-thinking show    Show thinking (default, retaining native expansion)
+/tool-thinking hide    Hide all thinking, including standalone and streaming runs
+```
+
+These independent preferences affect aggregate only. Changes refresh existing rows without changing per-tool expansion. B preserves the native expanded call region, including all calls, arguments, wrapping, status, duration, errors and costs, with live partial updates. Script and output remain hidden. Without nested calls, both modes remain single-line. Click the summary or any nested row to expand the entire codemode; collapse returns to the selected A/B mode. `Ctrl+O` retains native global expansion.
+
+Hidden thinking leaves no `Thinking...` placeholder or blank rows. Serial tools stay contiguous, with spacing only around parallel sections. Model thinking settings and transcript content are untouched; showing thinking again retains its native expansion. Normal text, errors and final statistics remain visible. Tidy/Claude thinking is unchanged.
+
+Commands automatically save to `getAgentDir()/extension-data/pi-compact-tool/preferences.json` (normally `~/.pi/agent/extension-data/pi-compact-tool/preferences.json`). Preferences are shared across projects and restored for new sessions and reload. First-use defaults are A + thinking shown. `/tool-style` remains non-persistent. A failed save reports an error without changing current preferences.
+
 ## View task changes
 
 In TUI sessions, Edit / Write save the first pre-write snapshot of each touched file. Once the entire agent run settles, the extension reads only those files again and generates a self-contained HTML report. Repeated edits become one net diff; files restored to their original state are omitted. No repository scan or Git baseline is used. Official tools still own path resolution, edit semantics and the per-file mutation queue; capture runs inside their filesystem operation hooks without changing tool results or model context.
@@ -88,11 +105,13 @@ Reversible native tool `render/handleMouse` and assistant `render` patches remov
 
 Pi keeps ownership of image protocols, display settings and conversion. An image can remain visible while its text result is collapsed, matching native Pi behavior. Actual pixel display depends on terminal support and Pi settings. In aggregate mode, images remain after their owning tool. A colored bottom-padding row closes the text panel before the image; if more tools follow in the same region, a colored top-padding row resumes the panel. Existing section padding is reused. Images are not relocated to the end of the tool region.
 
+Aggregate caches painted text layout and hidden-thinking region IDs to avoid repeated truncation, coloring and filtering on each frame. Image protocols, conversion, uploads and native image caches are unchanged. See [display/performance validation](./checks/display-preferences-validation.md) for a 300-PNG fullscreen CPU comparison and its limits: real terminal image decoding/painting and perceived scroll latency were not measured.
+
 ## Custom tools
 
 `ffgrep`, `fffind` and `codemode` are adapted automatically in TUI mode, without changes to their extension or registration code. Adapters live in `src/custom-tools.ts` and replace only the UI component's definition, never the registered/executing tool, schema, exposure or activation state. Shutdown/reload restores the native renderer.
 
-FFF rows show pattern, path and `totalMatched` counts (matches for ffgrep, files for fffind), falling back to result-line counts for old results. Expand for full output. Codemode collapses to its first code line and nested-call count, or output-line count excluding the native status header. Expansion preserves native script, nested-call statuses and output. Statistics count only top-level codemode calls; nested calls are not shown as independent parallel groups. None of these tools is enabled automatically.
+FFF rows show pattern, path and `totalMatched` counts (matches for ffgrep, files for fffind), falling back to result-line counts for old results. Expand for full output. Codemode defaults to its first code line and nested-call count; aggregate B additionally shows the complete native nested-call region. Without nested calls it shows the first code line and output-line count excluding the native status header. Expansion preserves native script, nested-call statuses and output. Statistics count only top-level codemode calls; nested calls are not shown as independent parallel groups. None of these tools is enabled automatically.
 
 Other custom tools retain their renderer unless opted in. Wrap the definition at its original registration site:
 
@@ -130,9 +149,10 @@ This version does not include whole-Run collapse, a separate detail popup, model
 npm install --ignore-scripts --legacy-peer-deps
 npm run check
 npm run test:tui  # requires expect, python3 and pi
+npm run test:display-tui  # A/B, clicks, thinking visibility and preference restoration
 npm run test:changes-ui  # requires ego-browser; saves HTML, results and screenshots outside the worktree
 ```
 
 Development requires Pi's host packages and `typebox` to resolve locally. Validation on this machine uses symlinks to the existing Pi installation, without installing a second Pi copy.
 
-See [changes validation](./checks/changes-validation.md) for net-diff tests and browser checks. See [polish validation](./checks/polish-validation.md) for spacing refinements, automatic custom adapters, 42 tests and real fullscreen checks. The earlier unified-panel implementation is recorded in [thinking validation](./checks/thinking-validation.md). Earlier parallel headings are recorded in [layout validation](./checks/parallel-heading-validation.md). Earlier background and padding changes are recorded in [visual fix validation](./checks/visual-fix-validation.md). The [first aggregate validation](./checks/aggregate-validation.md) is retained. The [original validation notes](./checks/project-3-validation.md) are retained for the previous per-tool implementation. Licensed under [MIT](./LICENSE).
+See [display/performance validation](./checks/display-preferences-validation.md) for the new preferences and multi-image diagnostics. See [changes validation](./checks/changes-validation.md) for net-diff tests and browser checks. See [polish validation](./checks/polish-validation.md) for spacing refinements, automatic custom adapters, 42 tests and real fullscreen checks. The earlier unified-panel implementation is recorded in [thinking validation](./checks/thinking-validation.md). Earlier parallel headings are recorded in [layout validation](./checks/parallel-heading-validation.md). Earlier background and padding changes are recorded in [visual fix validation](./checks/visual-fix-validation.md). The [first aggregate validation](./checks/aggregate-validation.md) is retained. The [original validation notes](./checks/project-3-validation.md) are retained for the previous per-tool implementation. Licensed under [MIT](./LICENSE).

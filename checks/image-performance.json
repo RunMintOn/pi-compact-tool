@@ -1,0 +1,117 @@
+{
+  "control": "Same implementation, AggregateShell painted-row cache and hidden-region ID cache temporarily bypassed; no CPU profiler.",
+  "before": {
+    "image": "User-provided PNG screenshot (1906 × 850)",
+    "imageBytes": 240489,
+    "count": 300,
+    "protocol": "kitty",
+    "columns": 100,
+    "rows": 40,
+    "node": "v24.20.0",
+    "results": [
+      {
+        "mode": "native",
+        "coldMs": 24.91300000000001,
+        "coldImageCacheMisses": 300,
+        "coldBytes": 644762,
+        "coldUploads": 2,
+        "frames": 60,
+        "medianMs": 1.0307090000000017,
+        "p95Ms": 1.5420830000000478,
+        "imageRenders": 18000,
+        "imageCacheMisses": 0,
+        "bytes": 1728181,
+        "uploads": 5,
+        "imageCacheMissesAfterInvalidation": 300
+      },
+      {
+        "mode": "aggregate-show",
+        "coldMs": 43.56995799999993,
+        "coldImageCacheMisses": 300,
+        "coldBytes": 645311,
+        "coldUploads": 2,
+        "frames": 60,
+        "medianMs": 10.154250000000047,
+        "p95Ms": 40.77716699999996,
+        "imageRenders": 18000,
+        "imageCacheMisses": 0,
+        "bytes": 1742276,
+        "uploads": 5,
+        "imageCacheMissesAfterInvalidation": 300
+      },
+      {
+        "mode": "aggregate-hide",
+        "coldMs": 56.90895899999987,
+        "coldImageCacheMisses": 300,
+        "coldBytes": 966399,
+        "coldUploads": 3,
+        "frames": 60,
+        "medianMs": 20.436167000000296,
+        "p95Ms": 37.1892499999999,
+        "imageRenders": 18000,
+        "imageCacheMisses": 0,
+        "bytes": 1726649,
+        "uploads": 5,
+        "imageCacheMissesAfterInvalidation": 300
+      }
+    ],
+    "limitation": "No real terminal image decode/painting or wheel-to-screen latency measurement; PNG only."
+  },
+  "after": {
+    "image": "User-provided PNG screenshot (1906 × 850)",
+    "imageBytes": 240489,
+    "count": 300,
+    "protocol": "kitty",
+    "columns": 100,
+    "rows": 40,
+    "node": "v24.20.0",
+    "results": [
+      {
+        "mode": "native",
+        "coldMs": 25.931083000000058,
+        "coldImageCacheMisses": 300,
+        "coldBytes": 644762,
+        "coldUploads": 2,
+        "frames": 60,
+        "medianMs": 1.0818749999999682,
+        "p95Ms": 1.5896249999999554,
+        "imageRenders": 18000,
+        "imageCacheMisses": 0,
+        "bytes": 1728186,
+        "uploads": 5,
+        "imageCacheMissesAfterInvalidation": 300
+      },
+      {
+        "mode": "aggregate-show",
+        "coldMs": 39.694999999999936,
+        "coldImageCacheMisses": 300,
+        "coldBytes": 645310,
+        "coldUploads": 2,
+        "frames": 60,
+        "medianMs": 2.7615829999999733,
+        "p95Ms": 7.159208000000035,
+        "imageRenders": 18000,
+        "imageCacheMisses": 0,
+        "bytes": 1742251,
+        "uploads": 5,
+        "imageCacheMissesAfterInvalidation": 300
+      },
+      {
+        "mode": "aggregate-hide",
+        "coldMs": 41.36699999999996,
+        "coldImageCacheMisses": 300,
+        "coldBytes": 966399,
+        "coldUploads": 3,
+        "frames": 60,
+        "medianMs": 1.646874999999909,
+        "p95Ms": 2.179292000000032,
+        "imageRenders": 18000,
+        "imageCacheMisses": 0,
+        "bytes": 1726631,
+        "uploads": 5,
+        "imageCacheMissesAfterInvalidation": 300
+      }
+    ],
+    "limitation": "No real terminal image decode/painting or wheel-to-screen latency measurement; PNG only."
+  }
+}

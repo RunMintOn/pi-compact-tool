@@ -1,6 +1,6 @@
 import { AssistantMessageComponent, ToolExecutionComponent, sessionEntryToContextMessages, type Theme } from "@earendil-works/pi-coding-agent";
 import { hyperlink, MouseRegion, Spacer, truncateToWidth, type Component, type TuiMouseEvent } from "@earendil-works/pi-tui";
-import { getDisplayStyle } from "./state.ts";
+import { getDisplayPreferences, getDisplayStyle } from "./state.ts";
 import { adaptCustomTool } from "./custom-tools.ts";
 import { lineCount, panelLine, parallelLabel, SummaryLine, toolLabel } from "./render-utils.ts";
 
@@ -50,6 +50,7 @@ function terminal(message: Message): boolean {
 export class ActivityProjection {
   private batches = new Map<string, Batch>();
   private regions = new Map<string, ToolRegion>();
+  private hiddenRegionIds = new WeakMap<ToolRegion, { length: number; ids: string[] }>();
   private currentRegion?: ToolRegion;
   private timings = new Map<string, Timing>();
   private summaries = new Map<string, Request>();
@@ -152,10 +153,19 @@ export class ActivityProjection {
 
   hasNode(id: string): boolean { return this.regions.has(id); }
   hasTools(id: string): boolean { return this.regions.get(id)?.ids.some(node => this.batches.has(node)) ?? false; }
-  startsBlock(id: string): boolean { return this.regions.get(id)?.ids[0] === id; }
-  endsBlock(id: string): boolean { return this.regions.get(id)?.ids.at(-1) === id; }
+  private visibleIds(id: string): string[] | undefined {
+    const region = this.regions.get(id);
+    if (!region || getDisplayPreferences().showThinking) return region?.ids;
+    const cached = this.hiddenRegionIds.get(region);
+    if (cached?.length === region.ids.length) return cached.ids;
+    const ids = region.ids.filter(node => this.batches.has(node));
+    this.hiddenRegionIds.set(region, { length: region.ids.length, ids });
+    return ids;
+  }
+  startsBlock(id: string): boolean { return this.visibleIds(id)?.[0] === id; }
+  endsBlock(id: string): boolean { return this.visibleIds(id)?.at(-1) === id; }
   nextInBlock(id: string): string | undefined {
-    const ids = this.regions.get(id)?.ids;
+    const ids = this.visibleIds(id);
     const index = ids?.indexOf(id) ?? -1;
     return index >= 0 ? ids?.[index + 1] : undefined;
   }
@@ -165,7 +175,7 @@ export class ActivityProjection {
     return batch?.ids[0] === id && this.isParallel(id) ? batch.ids.length : 0;
   }
   startsSection(id: string): boolean {
-    const ids = this.regions.get(id)?.ids;
+    const ids = this.visibleIds(id);
     const index = ids?.indexOf(id) ?? -1;
     if (!ids || index <= 0) return false;
     if (!this.batches.has(id)) return this.hasTools(id);
@@ -362,6 +372,14 @@ export function installActivityUI(projection: ActivityProjection, getTheme: () =
     outputPad = native.outputPad;
     if (getDisplayStyle() !== "aggregate" || !native.lastMessage || width < 1) return originalAssistantRender.call(this, width);
     const children = native.contentContainer.children;
+    const showThinking = getDisplayPreferences().showThinking;
+    // A native MouseRegion in assistant content is a thinking run, not normal Markdown.
+    const visibleChildren = showThinking ? children : children.filter((child, index) => {
+      if (child instanceof MouseRegion) return false;
+      if (!(child instanceof Spacer)) return true;
+      if (index === 0) return children.some(other => !(other instanceof MouseRegion) && !(other instanceof Spacer));
+      return !(children[index - 1] instanceof MouseRegion) && !(children[index + 1] instanceof MouseRegion);
+    });
     let run = 0;
     const thinking = new Map<Component, string>();
     for (const child of children) {
@@ -369,8 +387,8 @@ export function installActivityUI(projection: ActivityProjection, getTheme: () =
       const id = thinkingId(native.lastMessage, run++);
       if (projection.hasNode(id) ? projection.hasTools(id) : calls(native.lastMessage).length > 0) thinking.set(child, id);
     }
-    const decorated = children.map((child, index): Component => {
-      if (child instanceof Spacer && thinking.has(children[index + 1]!)) {
+    const decorated = visibleChildren.map((child, index): Component => {
+      if (child instanceof Spacer && thinking.has(visibleChildren[index + 1]!)) {
         return { render: () => [], invalidate() {} };
       }
       const id = thinking.get(child);

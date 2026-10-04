@@ -3,7 +3,7 @@ import { type Component, truncateToWidth } from "@earendil-works/pi-tui";
 import { decorateTool, type DisplayAdapter } from "./display.ts";
 import { transcriptPadding } from "./activity.ts";
 import { firstLine, lineCount, panelLine, plural, textOutput } from "./render-utils.ts";
-import { getDisplayStyle } from "./state.ts";
+import { getDisplayPreferences, getDisplayStyle } from "./state.ts";
 
 function adapter(name: string): DisplayAdapter | undefined {
   if (name === "ffgrep" || name === "fffind") return {
@@ -28,12 +28,15 @@ function adapter(name: string): DisplayAdapter | undefined {
   return undefined;
 }
 
-function nativePanel(component: Component, theme: Theme): Component {
+function nativePanel(component: Component, theme: Theme, callsOnly = false): Component {
   return {
     render(width) {
       if (getDisplayStyle() !== "aggregate") return component.render(width);
       const padding = transcriptPadding();
-      return component.render(Math.max(1, width - padding * 2)).map(row => panelLine(truncateToWidth(" ".repeat(padding) + row, width, "…"), width, theme));
+      const rows = component.render(Math.max(1, width - padding * 2));
+      // The native result begins its call region with a spacer. Compact rows are contiguous.
+      if (callsOnly && rows[0] === "") rows.shift();
+      return rows.map(row => panelLine(truncateToWidth(" ".repeat(padding) + row, width, "…"), width, theme));
     },
     invalidate: () => component.invalidate(),
   };
@@ -65,8 +68,15 @@ export function adaptCustomTool(component: ToolExecutionComponent): (() => void)
     };
     decorated.renderResult = (result, options, theme, context) => {
       const compact = renderResult(result, options, theme, context);
-      return options.expanded && original.renderResult
-        ? nativePanel(original.renderResult(result, options, theme, { ...context, lastComponent: undefined }), theme) : compact;
+      if (options.expanded && original.renderResult) {
+        return nativePanel(original.renderResult(result, options, theme, { ...context, lastComponent: undefined }), theme);
+      }
+      const calls = (result.details as { calls?: unknown[] } | undefined)?.calls;
+      if (getDisplayStyle() === "aggregate" && getDisplayPreferences().codemodeView === "calls" && calls?.length && original.renderResult) {
+        // Empty content isolates the native nested-call region without copying its formatting.
+        return nativePanel(original.renderResult({ ...result, content: [] }, { ...options, expanded: true }, theme, { ...context, lastComponent: undefined }), theme, true);
+      }
+      return compact;
     };
   }
   const framing = native.children[1]!;

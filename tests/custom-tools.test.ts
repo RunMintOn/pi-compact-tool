@@ -4,7 +4,7 @@ import { ToolExecutionComponent, initTheme, type ToolDefinition, type Theme } fr
 import { Text, stripTerminalSequences, visibleWidth, type TuiMouseEvent } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { ActivityProjection, installActivityUI } from "../src/activity.ts";
-import { resetDisplayState, setDisplayStyle } from "../src/state.ts";
+import { resetDisplayState, setDisplayStyle, setCodemodeView } from "../src/state.ts";
 
 initTheme("dark", false);
 const theme = { appearance: "dark", getColorMode: () => "truecolor", fg: (_: string, text: string) => text, style: (text: string) => text, bold: (text: string) => text } as unknown as Theme;
@@ -58,6 +58,49 @@ test("automatic custom adaptation restores original renderers on release and lea
   release();
   assert.match(plain(known.render(80)), /original custom title/);
   assert.match(plain(known.render(80)), /original custom result/);
+});
+
+test("calls mode extracts the entire native call region, streams updates and toggles the whole script", () => {
+  resetDisplayState("aggregate");
+  const release = installActivityUI(new ActivityProjection(), () => theme);
+  try {
+    const definition = createCodemodeToolDefinition();
+    const code = "await tools.read({path: 'a'});\ntext('SCRIPT BODY');";
+    const row = new ToolExecutionComponent("codemode", "calls", { code }, {}, definition, { requestRender() {} } as any, process.cwd());
+    const calls = Array.from({ length: 12 }, (_, index) => ({ name: `read_${index}`, args: JSON.stringify({ path: "a".repeat(100) }), status: index === 0 ? "error" : "ok", durationMs: 5, ...(index === 0 ? { error: "nested error\nsecond error line" } : {}) }));
+    const result = { content: [{ type: "text" as const, text: "SCRIPT OUTPUT" }], details: { calls }, isError: false };
+    row.updateResult(result);
+    assert.equal(row.render(100).length, 1);
+    setCodemodeView("calls");
+    const preview = plain(row.render(100));
+    // Native expanded result with output removed is the independent reference for region fidelity.
+    const native = definition.renderResult!({ ...result, content: [] }, { expanded: true, isPartial: false }, theme, { showImages: true } as any);
+    assert.deepEqual(row.render(100).slice(1).map(line => stripTerminalSequences(line).trimEnd()), native.render(98).slice(1).map((line: string) => " " + stripTerminalSequences(line).trimEnd()));
+    assert.match(preview, /read_0/);
+    assert.match(preview, /read_11/);
+    assert.match(preview, /second error line/);
+    assert.doesNotMatch(preview, /earlier calls|SCRIPT BODY|SCRIPT OUTPUT/);
+    const callY = row.render(100).findIndex(line => stripTerminalSequences(line).includes("read_11"));
+    assert.equal(row.handleMouse({ type: "click", button: "left", x: 3, y: callY, width: 100, height: row.render(100).length } as TuiMouseEvent)?.handled, true);
+    assert.match(plain(row.render(100)), /SCRIPT BODY/);
+    assert.match(plain(row.render(100)), /SCRIPT OUTPUT/);
+    setCodemodeView("compact");
+    assert.match(plain(row.render(100)), /SCRIPT BODY/);
+    row.setExpanded(false);
+    assert.equal(row.render(100).length, 1);
+    setCodemodeView("calls");
+    row.updateResult({ ...result, details: { calls: [{ name: "pending", args: "{}", status: "running" }] } }, true);
+    assert.match(plain(row.render(100)), /… pending/);
+    assert.doesNotMatch(plain(row.render(100)), /SCRIPT OUTPUT/);
+    for (const width of [1, 2, 15, 40]) assert.ok(row.render(width).every(line => visibleWidth(line) <= width));
+    row.updateResult({ ...result, details: { calls: [] } });
+    assert.equal(row.render(100).length, 1);
+    row.updateResult(result);
+    setDisplayStyle("tidy");
+    assert.doesNotMatch(plain(row.render(100)), /read_11/);
+    setDisplayStyle("claude");
+    assert.doesNotMatch(plain(row.render(100)), /read_11/);
+  } finally { release(); resetDisplayState("aggregate"); }
 });
 
 test("actual codemode collapses to one row but expanded view retains native script and nested-call details", () => {

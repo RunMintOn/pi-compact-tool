@@ -4,7 +4,8 @@ import { pathToFileURL } from "node:url";
 import { ChangeTracker, type ChangeOutcome } from "./src/changes.ts";
 import { ACTIVITY_ENTRY, ActivityProjection, installActivityUI } from "./src/activity.ts";
 import { createDisplayTools } from "./src/tools.ts";
-import { getDisplayStyle, refreshDisplayRows, resetDisplayState, setDisplayStyle, type DisplayStyle } from "./src/state.ts";
+import { getDisplayPreferences, getDisplayStyle, refreshDisplayRows, resetDisplayState, setDisplayPreferences, setDisplayStyle, type DisplayPreferences, type DisplayStyle } from "./src/state.ts";
+import { loadPreferences, savePreferences } from "./src/preferences.ts";
 
 const styles: DisplayStyle[] = ["aggregate", "tidy", "claude"];
 const labels: Record<DisplayStyle, string> = { aggregate: "聚合风格（aggregate）", tidy: "项目一风格（tidy）", claude: "项目三风格（claude）" };
@@ -16,6 +17,15 @@ export default function compactToolExtension(pi: ExtensionAPI): void {
   let releaseUI: (() => void) | undefined;
   let persistedFinal: string | undefined;
   const interactive = (ctx: ExtensionContext) => ctx.hasUI && ctx.mode === "tui";
+  const preferencesPath = join(getAgentDir(), "extension-data", "pi-compact-tool", "preferences.json");
+  const updatePreferences = async (patch: Partial<DisplayPreferences>, label: string, ctx: ExtensionContext) => {
+    try {
+      setDisplayPreferences(await savePreferences(preferencesPath, patch));
+      ctx.ui.notify(`${label}（已保存全局偏好，仅 aggregate 生效）`, "info");
+    } catch (error) {
+      ctx.ui.notify(`无法保存展示偏好：${error instanceof Error ? error.message : String(error)}`, "error");
+    }
+  };
   const rebuild = (ctx: ExtensionContext) => {
     if (!interactive(ctx)) return;
     activity.rebuild(ctx.sessionManager.buildContextEntries());
@@ -45,6 +55,38 @@ export default function compactToolExtension(pi: ExtensionAPI): void {
     },
   });
 
+  pi.registerCommand("codemode-view", {
+    description: "Switch aggregate codemode preview: compact or native calls",
+    getArgumentCompletions(prefix) {
+      return ["compact", "calls"].filter(value => value.startsWith(prefix)).map(value => ({ value, label: value }));
+    },
+    async handler(args, ctx) {
+      if (!interactive(ctx)) return;
+      const value = args.trim() || (getDisplayPreferences().codemodeView === "compact" ? "calls" : "compact");
+      if (value !== "compact" && value !== "calls") {
+        ctx.ui.notify("使用 /codemode-view compact 或 /codemode-view calls", "error");
+        return;
+      }
+      await updatePreferences({ codemodeView: value }, `codemode 展示：${value}`, ctx);
+    },
+  });
+
+  pi.registerCommand("tool-thinking", {
+    description: "Show or hide all thinking in aggregate display",
+    getArgumentCompletions(prefix) {
+      return ["show", "hide"].filter(value => value.startsWith(prefix)).map(value => ({ value, label: value }));
+    },
+    async handler(args, ctx) {
+      if (!interactive(ctx)) return;
+      const value = args.trim() || (getDisplayPreferences().showThinking ? "hide" : "show");
+      if (value !== "show" && value !== "hide") {
+        ctx.ui.notify("使用 /tool-thinking show 或 /tool-thinking hide", "error");
+        return;
+      }
+      await updatePreferences({ showThinking: value === "show" }, `thinking 展示：${value}`, ctx);
+    },
+  });
+
   pi.registerCommand("changes", {
     description: "Open the latest Edit / Write net changes in your browser",
     async handler(_args, ctx) {
@@ -66,12 +108,17 @@ export default function compactToolExtension(pi: ExtensionAPI): void {
     },
   });
 
-  pi.on("session_start", (_event, ctx) => {
+  pi.on("session_start", async (_event, ctx) => {
     releaseUI?.(); releaseUI = undefined; persistedFinal = undefined;
     changes.reset(); activity.clearChanges(); outcome = "completed";
     const flag = pi.getFlag("compact-style");
     resetDisplayState(styles.includes(flag as DisplayStyle) ? flag as DisplayStyle : "aggregate");
     if (!interactive(ctx)) return;
+    try {
+      setDisplayPreferences(await loadPreferences(preferencesPath));
+    } catch (error) {
+      ctx.ui.notify(`无法读取展示偏好，使用默认值：${error instanceof Error ? error.message : String(error)}`, "warning");
+    }
     rebuild(ctx);
     // Render callbacks can outlive this session's extension context.
     const theme = ctx.ui.theme;
