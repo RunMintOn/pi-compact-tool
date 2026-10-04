@@ -67,18 +67,18 @@ pi -ne -e ./index.ts --tui-mode fullscreen --compact-style tidy
 
 ## 快速试工具名颜色
 
-仅 aggregate 的 codemode 与 Bash 工具名支持试色。codemode 默认为柔和琥珀色，Bash 默认保持绿色；失败时仍优先显示红色。原生完整展开的 codemode 内容保持原样。
+仅 aggregate 的 codemode 与 Bash 工具名支持试色。codemode 默认为柔和琥珀色，Bash 默认使用蓝色；失败时仍优先显示红色。原生完整展开的 codemode 内容保持原样。
 
 ```text
 /tool-color                  查看当前颜色和可选项
 /tool-color bash             给 Bash 切换到下一种颜色
 /tool-color bash blue        Bash 使用蓝色
 /tool-color codemode amber   codemode 使用琥珀色
-/tool-color bash reset       恢复 Bash 默认绿色
-/tool-color codemode reset   恢复 codemode 默认琥珀色
+/tool-color bash reset       恢复 Bash 默认蓝色并保存
+/tool-color codemode reset   恢复 codemode 默认琥珀色并保存
 ```
 
-可选颜色：`green` 绿色、`blue` 蓝色、`cyan` 青色、`purple` 紫色、`amber` 琥珀色、`orange` 橙色、`pink` 粉色、`gray` 灰色。省略颜色按这个顺序循环。已有工具行立即刷新，保持展开状态。试色选择不保存，新会话或 reload 恢复默认值；不会改变 A/B 和 thinking 的已保存偏好，也不影响 tidy / claude。
+可选颜色：`green` 绿色、`blue` 蓝色、`cyan` 青色、`purple` 紫色、`amber` 琥珀色、`orange` 橙色、`pink` 粉色、`gray` 灰色。省略颜色按这个顺序循环。已有工具行立即刷新，保持展开状态。颜色选择自动保存到同一个全局 preferences.json，跨项目、新会话及 reload 恢复，已保存的颜色优先于默认值。reset 恢复默认色并保存。旧配置没有颜色字段时使用 Bash 蓝色、codemode 琥珀色，同时保留已有 A/B 和 thinking 设置；tidy / claude 不受影响。
 
 ## 查看本轮修改
 
@@ -110,7 +110,7 @@ aggregate 统计第一行在工具枚举后显示 **View changes**。宽度不�
 - TPS 累计本次 `agent_end.messages` 中 assistant 的 `usage.output`，除以 `agent_start` 到 `agent_end` 的总秒数减去该次运行的工具时间段并集；工具时间段裁剪到该次运行的起止范围。仍包含工具阶段以外的网络等待和思考，不拆分 reasoning token。TPS 按该次 agent 运行计算，工具耗时及其他计数按用户请求累计，包含续跑。新 TPS 连同公式标记保存到已有 custom entry，reload 后恢复；旧记录可从完整工具计时恢复工具耗时，但不显示旧口径 TPS。无有效起点、工具计时、剩余耗时或输出时不显示 TPS。仅在 aggregate 已有统计中加入，不新增纯回答统计或通知；停用独立 `tps.ts`，避免重复通知。
 - 费用显示为 `$0.641`，保留三位小数。从当前用户消息到这次回答结束，累加其间所有 assistant 消息的 `usage.cost.total`，包含中间多次模型调用，不累计之前消息的费用。金额使用 Pi 已记录的美元费用估算，不额外查询账单或自行计算价格；每条新用户消息重新计费。reload 从消息 usage 恢复，旧记录缺少费用数据时不显示金额。
 - Bash 行数优先统计官方提供的输出数据，不把 `(no output)` 和退出状态说明算成命令输出。忽略末尾换行，不计算终端自动折行。输出已被官方工具截断时显示 `truncated`，使用其输出行数元数据，不读取完整输出文件。旧记录没有保存行数时，回退为收到的文字结果行数；可能包含原生状态说明。
-- aggregate 使用样稿的低对比度底色和绿／紫／琥珀工具名配色，按主题的深浅模式和终端颜色能力显示。工具区域中的 Think 前保留一行同底色空白，后面紧贴工具；区域开头复用顶部留白，共用一个连续区域；区域与普通正文之间保留一行，色块内部上下各有一行留白，所有工具名与正文左对齐，遵循原生 `outputPad`（默认 1 列，可设为 0），不保留竖线或额外左侧标记空间。parallel 组前显示低饱和蓝灰色的 `parallel · N calls` 标题，标题紧贴下面的工具。组前及组后接普通工具时，各保留一行同底色空白；相邻 parallel 组之间只有一行空白。区域首尾复用已有留白，不叠加。普通串行工具仍紧贴排列，整段背景不按组拆分。截断或高亮产生的 ANSI reset 后恢复区域底色，避免摘要出现黑底缺口。
+- aggregate 使用样稿的低对比度底色和绿／紫／蓝／琥珀工具名配色，按主题的深浅模式和终端颜色能力显示。工具区域中的 Think 前保留一行同底色空白，后面紧贴工具；区域开头复用顶部留白，共用一个连续区域；区域与普通正文之间保留一行，色块内部上下各有一行留白，所有工具名与正文左对齐，遵循原生 `outputPad`（默认 1 列，可设为 0），不保留竖线或额外左侧标记空间。parallel 组前显示低饱和蓝灰色的 `parallel · N calls` 标题，标题紧贴下面的工具。组前及组后接普通工具时，各保留一行同底色空白；相邻 parallel 组之间只有一行空白。区域首尾复用已有留白，不叠加。普通串行工具仍紧贴排列，整段背景不按组拆分。截断或高亮产生的 ANSI reset 后恢复区域底色，避免摘要出现黑底缺口。
 - aggregate 通过可撤销的原生工具 `render/handleMouse` 和 assistant `render` patch 去掉区域内部的逐条空白、追加末尾统计。只在 TUI 会话安装，reload / shutdown 恢复，装饰 Think 背景和布局，并可隐藏其显示，点击转发给原生 MouseRegion；不修改 Think 内容、折叠状态、图片协议或工具执行逻辑。
 
 ## 图片

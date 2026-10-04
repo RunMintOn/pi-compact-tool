@@ -95,3 +95,14 @@ CPU profile 中主要开销为 `truncateToWidth`、文字区域排版和隐藏�
 - `npm run check`：typecheck 与完整 66 项测试通过。覆盖默认琥珀、明确选择、循环、reset、非法参数、真实 ANSI 颜色、浅色主题、失败颜色优先、tidy / claude 不变、展开状态保留及 reload 重置。
 - `npm run test:display-tui`：真实 fullscreen 试色／reset、A/B、点击及 thinking 回归通过，没有模型请求。
 - 本次日志：`/tmp/pi-compact-color-check.log`、`/tmp/pi-compact-color-tui.log`。fullscreen 结果：`/var/folders/zh/qf_nccyd0_b0fc84rk8dl4lm0000gp/T/pi-compact-display-results-RToqIV/`。
+
+## 后续：全局颜色偏好与 Bash 蓝色默认值
+
+- 起点 commit：`be3b227`。覆盖上一节的会话级试色规则：Bash 默认蓝色，codemode 默认琥珀色。
+- bashColor / codemodeColor 纳入已有全局 preferences.json；命令保存后更新显示，跨项目、会话及 reload 恢复。reset 恢复并保存对应默认色。
+- 旧配置缺少颜色字段时补默认值，保留已有 A/B、thinking 设置。已有有效颜色优先；非法颜色回退到对应默认色。
+- 删除独立颜色状态，不新增配置文件或依赖。颜色、A/B、thinking 的保存互相保留其他字段。
+- 串行 Standards / Spec 自审无未解决问题。仅 aggregate 生效、失败红色优先等既有范围保持不变。
+- `npm run check`：typecheck 与完整 67 项测试通过，包含旧配置兼容、已保存非默认颜色恢复、跨项目、reset 持久化及 A/B、thinking 互不覆盖。
+- `npm run test:display-tui`：真实 fullscreen reload 后报告已保存的 codemode 粉色与 Bash 蓝色，reset 恢复琥珀色；既有点击、A/B 和 thinking 回归通过。
+- 详细日志：`/tmp/pi-compact-global-colors-check.log`、`/tmp/pi-compact-global-colors-tui.log`。fullscreen 结果：`/var/folders/zh/qf_nccyd0_b0fc84rk8dl4lm0000gp/T/pi-compact-display-results-QLo12v/`。

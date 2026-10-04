@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import { defaultPreferences, type DisplayPreferences } from "./state.ts";
+import { defaultPreferences, toolColorNames, type ToolColor, type DisplayPreferences } from "./state.ts";
 
 export async function loadPreferences(path: string): Promise<DisplayPreferences> {
   let value: Partial<DisplayPreferences>;
@@ -13,6 +13,8 @@ export async function loadPreferences(path: string): Promise<DisplayPreferences>
   return {
     codemodeView: value.codemodeView === "calls" ? "calls" : "compact",
     showThinking: typeof value.showThinking === "boolean" ? value.showThinking : true,
+    bashColor: toolColorNames.includes(value.bashColor as ToolColor) ? value.bashColor! : defaultPreferences.bashColor,
+    codemodeColor: toolColorNames.includes(value.codemodeColor as ToolColor) ? value.codemodeColor! : defaultPreferences.codemodeColor,
   };
 }
 

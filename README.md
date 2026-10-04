@@ -67,18 +67,18 @@ Commands automatically save to `getAgentDir()/extension-data/pi-compact-tool/pre
 
 ## Preview tool-label colors
 
-Aggregate codemode labels default to soft amber; Bash keeps its original green. Failure red takes precedence. Native fully expanded codemode content remains unchanged.
+Aggregate codemode labels default to soft amber; Bash defaults to blue. Failure red takes precedence. Native fully expanded codemode content remains unchanged.
 
 ```text
 /tool-color                  Show current colors and available options
 /tool-color bash             Cycle Bash to the next color
 /tool-color bash blue        Try blue for Bash
 /tool-color codemode amber   Use amber for codemode
-/tool-color bash reset       Restore Bash's green
-/tool-color codemode reset   Restore codemode's amber
+/tool-color bash reset       Restore and save Bash's blue
+/tool-color codemode reset   Restore and save codemode's amber
 ```
 
-Colors cycle through `green`, `blue`, `cyan`, `purple`, `amber`, `orange`, `pink`, `gray`. Existing rows refresh without changing expansion. Color previews are session-only: new sessions and reload reset them, without changing saved A/B or thinking preferences. Tidy/Claude are unaffected.
+Colors cycle through `green`, `blue`, `cyan`, `purple`, `amber`, `orange`, `pink`, `gray`. Existing rows refresh without changing expansion. Colors are automatically saved in the same global preferences.json and restored across projects, new sessions and reload. Saved colors take precedence over defaults; reset restores and saves the default. Older configurations without color fields use Bash blue and codemode amber while retaining existing A/B and thinking choices. Tidy/Claude are unaffected.
 
 ## View task changes
 
@@ -112,7 +112,7 @@ Cost appears as `$0.641` with three decimal places. It sums assistant `usage.cos
 
 Bash uses supplied native output data to exclude empty-output and exit-status notices, ignoring trailing newlines and terminal wrapping. For upstream truncation it uses output-line metadata and shows `truncated`, without reading the full-output file. Old sessions without recorded counts fall back to received text, which may include native status notices. There are no command-specific success-summary rules in aggregate mode.
 
-Aggregate uses the prototype's subdued background and green/purple/amber tool labels, adjusted for light/dark appearance and terminal color capability. Thinking is colored only when its continuous region contains tools; standalone thinking stays native. Panel thinking has one colored blank row above it, reusing outer top padding at the start, and connects directly to tools below. A single blank line separates their shared region from normal text; normal text remains uncolored and breaks the panel. Each region also has one colored padding row at its top and bottom. All tool names align with body text, respecting native `outputPad` (one column by default, or zero), without gutters or extra reserved marker space. Parallel groups have a subdued blue-gray `parallel · N calls` heading directly above their tools. One colored blank row separates sections when entering or leaving a parallel group, including adjacent parallel groups. Existing outer padding is reused at region boundaries. Serial tools remain tightly packed, and the background stays continuous across groups. Panel backgrounds are reapplied after embedded ANSI resets to avoid holes after truncation.
+Aggregate uses the prototype's subdued background and green/purple/blue/amber tool labels, adjusted for light/dark appearance and terminal color capability. Thinking is colored only when its continuous region contains tools; standalone thinking stays native. Panel thinking has one colored blank row above it, reusing outer top padding at the start, and connects directly to tools below. A single blank line separates their shared region from normal text; normal text remains uncolored and breaks the panel. Each region also has one colored padding row at its top and bottom. All tool names align with body text, respecting native `outputPad` (one column by default, or zero), without gutters or extra reserved marker space. Parallel groups have a subdued blue-gray `parallel · N calls` heading directly above their tools. One colored blank row separates sections when entering or leaving a parallel group, including adjacent parallel groups. Existing outer padding is reused at region boundaries. Serial tools remain tightly packed, and the background stays continuous across groups. Panel backgrounds are reapplied after embedded ANSI resets to avoid holes after truncation.
 
 Reversible native tool `render/handleMouse` and assistant `render` patches remove intra-region per-tool spacing and append the transient summary. Installed only in TUI sessions and restored on reload/shutdown. Thinking content and expansion state remain native; background/layout wrappers forward clicks to the original MouseRegion. Only thinking rows receive the panel background in mixed thinking/text messages. Per-row tool expansion and image paths remain intact.
 

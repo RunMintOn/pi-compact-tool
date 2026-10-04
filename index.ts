@@ -4,7 +4,7 @@ import { pathToFileURL } from "node:url";
 import { ChangeTracker, type ChangeOutcome } from "./src/changes.ts";
 import { ACTIVITY_ENTRY, ActivityProjection, installActivityUI } from "./src/activity.ts";
 import { createDisplayTools } from "./src/tools.ts";
-import { getDisplayPreferences, getDisplayStyle, getToolColor, refreshDisplayRows, resetDisplayState, setDisplayPreferences, setDisplayStyle, setToolColor, toolColorNames, type ToolColor, type DisplayPreferences, type DisplayStyle } from "./src/state.ts";
+import { getDisplayPreferences, getDisplayStyle, getToolColor, refreshDisplayRows, resetDisplayState, setDisplayPreferences, setDisplayStyle, defaultPreferences, toolColorNames, type ToolColor, type DisplayPreferences, type DisplayStyle } from "./src/state.ts";
 import { loadPreferences, savePreferences } from "./src/preferences.ts";
 
 const styles: DisplayStyle[] = ["aggregate", "tidy", "claude"];
@@ -56,7 +56,7 @@ export default function compactToolExtension(pi: ExtensionAPI): void {
   });
 
   pi.registerCommand("tool-color", {
-    description: "Preview aggregate bash/codemode label colors; omit color to cycle",
+    description: "Set global aggregate bash/codemode label colors; omit color to cycle",
     getArgumentCompletions(prefix) {
       const choices = ["bash", "codemode"].flatMap(tool => [tool, ...[...toolColorNames, "reset"].map(color => `${tool} ${color}`)]);
       return choices.filter(value => value.startsWith(prefix)).map(value => ({ value, label: value }));
@@ -65,7 +65,7 @@ export default function compactToolExtension(pi: ExtensionAPI): void {
       if (!interactive(ctx)) return;
       const values = args.trim().split(/\s+/);
       const [tool, requested] = values;
-      const usage = `使用 /tool-color bash|codemode [${toolColorNames.join("|")}|reset]；省略颜色依次切换，仅当前会话 aggregate 生效。`;
+      const usage = `使用 /tool-color bash|codemode [${toolColorNames.join("|")}|reset]；省略颜色依次切换，自动保存全局偏好，仅 aggregate 生效。`;
       if (!args.trim()) {
         ctx.ui.notify(`工具名颜色：codemode=${getToolColor("codemode")}，bash=${getToolColor("bash")}。${usage}`, "info");
         return;
@@ -75,8 +75,8 @@ export default function compactToolExtension(pi: ExtensionAPI): void {
         return;
       }
       const color = (requested as ToolColor | "reset" | undefined) ?? toolColorNames[(toolColorNames.indexOf(getToolColor(tool)) + 1) % toolColorNames.length]!;
-      setToolColor(tool, color);
-      ctx.ui.notify(`${tool} 工具名颜色：${getToolColor(tool)}（仅当前会话 aggregate 生效）`, "info");
+      const selected = color === "reset" ? defaultPreferences[`${tool}Color`] : color;
+      await updatePreferences({ [`${tool}Color`]: selected }, `${tool} 工具名颜色：${selected}`, ctx);
     },
   });
 

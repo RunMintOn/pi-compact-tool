@@ -7,14 +7,14 @@ export type CodemodeView = "compact" | "calls";
 export const toolColorNames = ["green", "blue", "cyan", "purple", "amber", "orange", "pink", "gray"] as const;
 export type ToolColor = typeof toolColorNames[number];
 export type ColorTool = "bash" | "codemode";
-const defaultToolColors: Record<ColorTool, ToolColor> = { bash: "green", codemode: "amber" };
 export interface DisplayPreferences {
   codemodeView: CodemodeView;
   showThinking: boolean;
+  bashColor: ToolColor;
+  codemodeColor: ToolColor;
 }
-export const defaultPreferences: DisplayPreferences = { codemodeView: "compact", showThinking: true };
+export const defaultPreferences: DisplayPreferences = { codemodeView: "compact", showThinking: true, bashColor: "blue", codemodeColor: "amber" };
 interface DisplayState {
-  colors: Record<ColorTool, ToolColor>;
   preferences: DisplayPreferences;
   style: DisplayStyle;
   rows: Map<object, () => void>;
@@ -22,14 +22,12 @@ interface DisplayState {
 // Cooperative custom tools can import the decorator through a different extension module root.
 const key = Symbol.for("pi-compact-tool.display-state.v1");
 const shared = globalThis as typeof globalThis & { [key]?: DisplayState };
-const state = shared[key] ??= { style: "aggregate", preferences: { ...defaultPreferences }, colors: { ...defaultToolColors }, rows: new Map() };
+const state = shared[key] ??= { style: "aggregate", preferences: { ...defaultPreferences }, rows: new Map() };
 state.preferences ??= { ...defaultPreferences };
-state.colors ??= { ...defaultToolColors };
 
-export function getToolColor(tool: ColorTool): ToolColor { return state.colors[tool]; }
+export function getToolColor(tool: ColorTool): ToolColor { return state.preferences[`${tool}Color`]; }
 export function setToolColor(tool: ColorTool, color: ToolColor | "reset"): void {
-  state.colors[tool] = color === "reset" ? defaultToolColors[tool] : color;
-  refreshDisplayRows();
+  setDisplayPreferences({ ...state.preferences, [`${tool}Color`]: color === "reset" ? defaultPreferences[`${tool}Color`] : color });
 }
 
 export function getDisplayPreferences(): DisplayPreferences { return { ...state.preferences }; }
@@ -65,6 +63,5 @@ export function refreshDisplayRows(): void {
 export function resetDisplayState(style: DisplayStyle = state.style, preferences: DisplayPreferences = defaultPreferences): void {
   state.style = style;
   state.preferences = { ...preferences };
-  state.colors = { ...defaultToolColors };
   state.rows.clear();
 }

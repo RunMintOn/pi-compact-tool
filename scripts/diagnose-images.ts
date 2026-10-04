@@ -5,7 +5,7 @@ const themeModule = await import(new URL("./modes/interactive/theme/theme.js", i
 import { Container, Image, ScrollView, TuiAltScreen, setCapabilities, setCellDimensions, type Terminal } from "@earendil-works/pi-tui";
 import { ActivityProjection, installActivityUI } from "../src/activity.ts";
 import { decorateTool } from "../src/display.ts";
-import { resetDisplayState } from "../src/state.ts";
+import { defaultPreferences, resetDisplayState } from "../src/state.ts";
 import { testPng } from "../tests/helpers/image.ts";
 
 // Real fullscreen layout/diff/image-upload path; terminal writes are counted, not displayed.
@@ -21,7 +21,7 @@ setCellDimensions({ widthPx: 8, heightPx: 16 });
 const report: unknown[] = [];
 for (const mode of ["native", "aggregate-show", "aggregate-hide"] as const) {
   setCapabilities({ images: "kitty", trueColor: true, hyperlinks: false });
-  resetDisplayState("aggregate", { codemodeView: "compact", showThinking: mode !== "aggregate-hide" });
+  resetDisplayState("aggregate", { ...defaultPreferences, showThinking: mode !== "aggregate-hide" });
   const projection = new ActivityProjection();
   const release = mode === "native" ? undefined : installActivityUI(projection, () => theme);
   let bytes = 0;
