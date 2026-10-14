@@ -97,7 +97,7 @@ export function parallelLabel(theme: Theme): string {
 }
 export function toolLabel(name: string, text: string, theme: Theme): string {
   if (name === "bash" || name === "codemode") return theme.style(text, { fg: previewColors[theme.appearance][getToolColor(name)] });
-  const kind = name === "edit" || name === "write" ? "edit" : name === "bash" ? "bash" : "read";
+  const kind = name === "edit" || name === "write" || name === "apply_patch" ? "edit" : name === "bash" ? "bash" : "read";
   return theme.style(text, { fg: toolColors[theme.appearance][kind] });
 }
 

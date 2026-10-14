@@ -122,9 +122,18 @@ aggregate 统计第一行在工具枚举后显示 **View changes**。宽度不�
 
 ## 自定义工具
 
-`ffgrep`、`fffind`、`codemode` 在 TUI 中自动接入，无需修改它们的插件或注册代码。适配集中在 `src/custom-tools.ts`，只替换显示组件使用的工具定义，不修改工具注册表、执行函数、schema、exposure 或激活状态；shutdown / reload 恢复原 renderer。
+包内附带面向 Agent 的 `skills/pi-compact-tool-adapter/SKILL.md`。通过 Pi 包方式安装或加载本仓库时，skill 一起加载；只用 `-e ./index.ts` 加载扩展文件时不会加载包内 skill。让 Agent 适配自己的工具时，可以使用：
+
+```text
+/skill:pi-compact-tool-adapter 给我的自定义工具适配紧凑渲染
+```
+
+skill 指导 Agent 检查实际工具数据、选择接入位置、保留展开详情并验证展示。源码位于仓库中，随 Git 和 npm 包分发。
+
+`ffgrep`、`fffind`、`codemode`、`apply_patch` 在 TUI 中自动接入，无需修改它们的插件或注册代码。适配集中在 `src/custom-tools.ts`，只替换显示组件使用的工具定义，不修改工具注册表、执行函数、schema、exposure 或激活状态；shutdown / reload 恢复原 renderer。
 
 - `ffgrep` 收起显示 pattern、path 和 `totalMatched` 匹配数；`fffind` 使用文件数。旧结果缺少元数据时显示结果行数，展开查看完整输出。
+- `apply_patch` 收起显示补丁中的文件路径和移动目标，成功后显示 `details.changes` 的文件数和实际增删行数；旧结果回退到输出中的文件数，不从请求补丁推测已应用行数。展开保留原生 diff 和诊断详情；没有原生结果 renderer 时显示完整文本输出。仅适配展示，不接入 `/changes` 的文件快照。
 - `codemode` 默认收起显示代码首行和内部调用数；aggregate 的 B 模式另显示完整原生内部调用区域。无内部调用时显示脚本输出行数，不计原生状态头。展开保留原生完整脚本、内部调用状态与输出。统计仍只计顶层 codemode 调用，内部调用不冒充独立 parallel 组。
 - 不自动启用这些工具。其他未接入工具保持原 renderer。
 

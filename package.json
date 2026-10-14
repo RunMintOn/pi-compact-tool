@@ -5,12 +5,12 @@
   "type": "module",
   "license": "MIT",
   "keywords": ["pi-package", "pi-extension", "tool-rendering"],
-  "pi": { "extensions": ["./index.ts"] },
+  "pi": { "extensions": ["./index.ts"], "skills": ["./skills"] },
   "exports": {
     ".": "./index.ts",
     "./display": "./src/display.ts"
   },
-  "files": ["index.ts", "src", "README.md", "README.zh-CN.md", "LICENSE"],
+  "files": ["index.ts", "src", "skills", "README.md", "README.zh-CN.md", "LICENSE"],
   "scripts": {
     "test": "node scripts/run-tests.mjs",
     "test:tui": "node scripts/check-tui.mjs",

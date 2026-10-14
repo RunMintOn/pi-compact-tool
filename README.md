@@ -126,9 +126,19 @@ Aggregate caches painted text layout and hidden-thinking region IDs to avoid rep
 
 ## Custom tools
 
-`ffgrep`, `fffind` and `codemode` are adapted automatically in TUI mode, without changes to their extension or registration code. Adapters live in `src/custom-tools.ts` and replace only the UI component's definition, never the registered/executing tool, schema, exposure or activation state. Shutdown/reload restores the native renderer.
+The package includes an agent-facing skill at `skills/pi-compact-tool-adapter/SKILL.md`, distributed through Git and npm. Loading or installing this repository as a Pi package also loads the skill; loading only `-e ./index.ts` does not. Ask your agent to adapt a tool with:
+
+```text
+/skill:pi-compact-tool-adapter Adapt my custom tool's compact rendering
+```
+
+The skill guides agents through inspecting tool data, choosing an integration point, preserving expanded details and verifying rendering.
+
+`ffgrep`, `fffind`, `codemode` and `apply_patch` are adapted automatically in TUI mode, without changes to their extension or registration code. Adapters live in `src/custom-tools.ts` and replace only the UI component's definition, never the registered/executing tool, schema, exposure or activation state. Shutdown/reload restores the native renderer.
 
 FFF rows show pattern, path and `totalMatched` counts (matches for ffgrep, files for fffind), falling back to result-line counts for old results. Expand for full output. Codemode defaults to its first code line and nested-call count; aggregate B additionally shows the complete native nested-call region. Without nested calls it shows the first code line and output-line count excluding the native status header. Expansion preserves native script, nested-call statuses and output. Statistics count only top-level codemode calls; nested calls are not shown as independent parallel groups. None of these tools is enabled automatically.
+
+Apply Patch rows show patch file paths and move destinations, then file counts and actual additions/deletions from `details.changes`. Legacy results fall back to output file counts without guessing applied line counts from the requested patch. Expansion retains native diffs and diagnostics, or full text output when no native result renderer exists. This is display-only; Apply Patch does not participate in `/changes` snapshots.
 
 Other custom tools retain their renderer unless opted in. Wrap the definition at its original registration site:
 

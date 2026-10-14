@@ -6,6 +6,39 @@ import { firstLine, lineCount, panelLine, plural, textOutput } from "./render-ut
 import { getDisplayPreferences, getDisplayStyle } from "./state.ts";
 
 function adapter(name: string): DisplayAdapter | undefined {
+  if (name === "apply_patch") return {
+    kind: "edit",
+    target: args => {
+      const targets: string[] = [];
+      for (const line of String(args.patch ?? "").split(/\r?\n/)) {
+        const file = /^\*\*\* (?:Add|Update|Delete) File: (.+)$/.exec(line);
+        if (file) targets.push(file[1]!);
+        const move = /^\*\*\* Move to: (.+)$/.exec(line);
+        if (move && targets.length) targets[targets.length - 1] += ` → ${move[1]}`;
+      }
+      return targets.join(", ") || "…";
+    },
+    summary: result => {
+      const changes = (result.details as { changes?: unknown } | undefined)?.changes;
+      if (Array.isArray(changes)) {
+        if (!changes.length) return "no changes";
+        let added = 0;
+        let removed = 0;
+        const hasStats = changes.every(change => {
+          if (!change || typeof change !== "object") return false;
+          const { additions, deletions } = change as { additions?: unknown; deletions?: unknown };
+          if (typeof additions !== "number" || !Number.isInteger(additions) || additions < 0 ||
+              typeof deletions !== "number" || !Number.isInteger(deletions) || deletions < 0) return false;
+          added += additions; removed += deletions;
+          return true;
+        });
+        return plural(changes.length, "file") + (hasStats ? ` +${added} -${removed}` : "");
+      }
+      const output = textOutput(result);
+      const files = output.split("\n").filter(line => /^[AMD] .+/.test(line)).length;
+      return files ? plural(files, "file") : firstLine(output) || "done";
+    },
+  };
   if (name === "ffgrep" || name === "fffind") return {
     kind: "search",
     target: args => `${args.pattern ?? ""} in ${args.path ?? "."}`,
@@ -58,6 +91,15 @@ export function adaptCustomTool(component: ToolExecutionComponent): (() => void)
   const original = native.toolDefinition;
   if (!displayAdapter || !original) return undefined;
   const decorated = decorateTool({ ...original, name: native.toolName }, displayAdapter);
+  if (native.toolName === "apply_patch" && original.renderResult) {
+    const renderResult = decorated.renderResult!;
+    decorated.renderResult = (result, options, theme, context) => {
+      const compact = renderResult(result, options, theme, context);
+      return options.expanded
+        ? nativePanel(original.renderResult!(result, options, theme, { ...context, lastComponent: undefined }), theme, options.isPartial)
+        : compact;
+    };
+  }
   if (native.toolName === "codemode") {
     const renderCall = decorated.renderCall!;
     const renderResult = decorated.renderResult!;

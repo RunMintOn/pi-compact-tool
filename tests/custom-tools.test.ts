@@ -21,6 +21,65 @@ function custom(name: string): ToolDefinition<any> {
   };
 }
 
+test("apply_patch shows compact file targets and actual change counts, retaining native expanded details", () => {
+  resetDisplayState("aggregate");
+  const release = installActivityUI(new ActivityProjection(), () => theme);
+  try {
+    const definition = custom("apply_patch");
+    const references = { ...definition };
+    const patch = "*** Begin Patch\n*** Update File: src/旧.ts\n*** Move to: src/new.ts\n@@\n-old\n+new\n*** Add File: added.ts\n+hello\n*** Delete File: gone.ts\n*** End Patch";
+    const row = new ToolExecutionComponent("apply_patch", "patch", { patch }, {}, definition, { requestRender() {} } as any, process.cwd());
+    row.updateResult({ content: [{ type: "text", text: "Success. Updated the following files:\nM src/new.ts\nA added.ts\nD gone.ts\n" }], details: { changes: [
+      { kind: "update", path: "src/旧.ts", moveTo: "src/new.ts", additions: 1, deletions: 1 },
+      { kind: "add", path: "added.ts", additions: 1, deletions: 0 },
+      { kind: "delete", path: "gone.ts", additions: 0, deletions: 8 },
+    ] }, isError: false });
+    assert.equal(row.render(120).length, 1);
+    assert.match(plain(row.render(120)), /src\/旧.ts → src\/new.ts/);
+    assert.match(plain(row.render(120)), /3 files \+2 -9/);
+    assert.doesNotMatch(plain(row.render(120)), /Begin Patch|original custom|Success/);
+    assert.deepEqual(definition, references);
+    assert.equal(row.handleMouse({ type: "click", button: "left", x: 5, y: 0, width: 120, height: 1 } as TuiMouseEvent)?.handled, true);
+    assert.match(plain(row.render(120)), /original custom result/);
+    for (const style of ["tidy", "claude", "aggregate"] as const) {
+      setDisplayStyle(style);
+      assert.match(plain(row.render(120)), /original custom result/);
+      for (const width of [1, 2, 15, 40]) assert.ok(row.render(width).every(line => visibleWidth(line) <= width));
+    }
+    release();
+    assert.match(plain(row.render(120)), /original custom title/);
+  } finally { release(); }
+});
+
+test("apply_patch legacy results, no-ops and failures never report requested line counts as applied", () => {
+  resetDisplayState("aggregate");
+  const release = installActivityUI(new ActivityProjection(), () => theme);
+  try {
+    const definition = { ...custom("apply_patch"), renderResult: undefined };
+    const row = new ToolExecutionComponent("apply_patch", "legacy-patch", { patch: "*** Begin Patch\n*** Add File: a.ts\n+requested\n*** End Patch" }, {}, definition, { requestRender() {} } as any, process.cwd());
+    row.updateResult({ content: [{ type: "text", text: "Success. Updated the following files:\nA a.ts\n" }], details: undefined, isError: false });
+    assert.match(plain(row.render(80)), /a.ts.*1 file/);
+    assert.doesNotMatch(plain(row.render(80)), /\+1/);
+    row.setExpanded(true);
+    assert.match(plain(row.render(80)), /Success/);
+    row.setExpanded(false);
+    row.updateResult({ content: [{ type: "text", text: "" }], details: undefined, isError: false }, true);
+    assert.match(plain(row.render(80)), /running/);
+    assert.equal(row.render(80).length, 1);
+    row.updateResult({ content: [{ type: "text", text: "done" }], details: { changes: [{ additions: "unknown", deletions: 1 }] }, isError: false });
+    assert.match(plain(row.render(80)), /1 file/);
+    assert.doesNotMatch(plain(row.render(80)), /NaN|\+| -1/);
+    row.updateResult({ content: [{ type: "text", text: "No changes needed" }], details: { changes: [] }, isError: false });
+    assert.match(plain(row.render(80)), /no changes/);
+    row.updateResult({ content: [{ type: "text", text: "Failed to find expected lines\nerror details" }], details: undefined, isError: true });
+    assert.doesNotMatch(plain(row.render(80)), /1 file|\+1|applied/);
+    row.setExpanded(true);
+    assert.match(plain(row.render(80)), /error details/);
+    row.updateArgs({ patch: "*** Begin Patch\n*** Update File: b.ts\n" });
+    assert.match(plain(row.render(80)), /b.ts/);
+  } finally { release(); }
+});
+
 test("FFF tools adapt inside the UI without changing registered definitions or executing tools", () => {
   resetDisplayState("aggregate");
   const release = installActivityUI(new ActivityProjection(), () => theme);
