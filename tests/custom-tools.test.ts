@@ -74,7 +74,7 @@ test("calls mode extracts the entire native call region, streams updates and tog
     setCodemodeView("calls");
     const preview = plain(row.render(100));
     // Native expanded result with output removed is the independent reference for region fidelity.
-    const native = definition.renderResult!({ ...result, content: [] }, { expanded: true, isPartial: false }, theme, { showImages: true } as any);
+    const native = definition.renderResult!({ ...result, content: [] }, { expanded: true, isPartial: false }, theme, { showImages: true, state: {} } as any);
     assert.deepEqual(row.render(100).slice(1).map(line => stripTerminalSequences(line).trimEnd()), native.render(98).slice(1).map((line: string) => " " + stripTerminalSequences(line).trimEnd()));
     assert.match(preview, /read_0/);
     assert.match(preview, /read_11/);

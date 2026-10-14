@@ -28,7 +28,7 @@ function adapter(name: string): DisplayAdapter | undefined {
   return undefined;
 }
 
-function nativePanel(component: Component, theme: Theme, callsOnly = false): Component {
+function nativePanel(component: Component, theme: Theme, pending: boolean, callsOnly = false): Component {
   return {
     render(width) {
       if (getDisplayStyle() !== "aggregate") return component.render(width);
@@ -36,7 +36,7 @@ function nativePanel(component: Component, theme: Theme, callsOnly = false): Com
       const rows = component.render(Math.max(1, width - padding * 2));
       // The native result begins its call region with a spacer. Compact rows are contiguous.
       if (callsOnly && rows[0] === "") rows.shift();
-      return rows.map(row => panelLine(truncateToWidth(" ".repeat(padding) + row, width, "…"), width, theme));
+      return rows.map(row => panelLine(truncateToWidth(" ".repeat(padding) + row, width, "…"), width, theme, pending));
     },
     invalidate: () => component.invalidate(),
   };
@@ -64,17 +64,17 @@ export function adaptCustomTool(component: ToolExecutionComponent): (() => void)
     decorated.renderCall = (args, theme, context) => {
       const compact = renderCall(args, theme, context);
       return context.expanded && original.renderCall
-        ? nativePanel(original.renderCall(args, theme, { ...context, lastComponent: undefined }), theme) : compact;
+        ? nativePanel(original.renderCall(args, theme, { ...context, lastComponent: undefined }), theme, context.isPartial) : compact;
     };
     decorated.renderResult = (result, options, theme, context) => {
       const compact = renderResult(result, options, theme, context);
       if (options.expanded && original.renderResult) {
-        return nativePanel(original.renderResult(result, options, theme, { ...context, lastComponent: undefined }), theme);
+        return nativePanel(original.renderResult(result, options, theme, { ...context, lastComponent: undefined }), theme, options.isPartial);
       }
       const calls = (result.details as { calls?: unknown[] } | undefined)?.calls;
       if (getDisplayStyle() === "aggregate" && getDisplayPreferences().codemodeView === "calls" && calls?.length && original.renderResult) {
         // Empty content isolates the native nested-call region without copying its formatting.
-        return nativePanel(original.renderResult({ ...result, content: [] }, { ...options, expanded: true }, theme, { ...context, lastComponent: undefined }), theme, true);
+        return nativePanel(original.renderResult({ ...result, content: [] }, { ...options, expanded: true }, theme, { ...context, lastComponent: undefined }), theme, options.isPartial, true);
       }
       return compact;
     };

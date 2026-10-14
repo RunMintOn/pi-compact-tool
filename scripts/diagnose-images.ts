@@ -30,7 +30,7 @@ for (const mode of ["native", "aggregate-show", "aggregate-hide"] as const) {
     columns: 100, rows: 40, kittyProtocolActive: false,
     start() {}, stop() {}, async drainInput() {},
     write(text) { bytes += Buffer.byteLength(text); uploads += (text.match(/a=T,/g) ?? []).length; },
-    moveBy() {}, hideCursor() {}, showCursor() {}, clearLine() {}, clearFromCursor() {}, clearScreen() {}, setTitle() {}, setProgress() {},
+    moveBy() {}, hideCursor() {}, showCursor() {}, clearLine() {}, clearFromCursor() {}, clearScreen() {}, setTitle() {}, setProgress() {}, setProgramStatus() {},
   };
   const ui = new TuiAltScreen(terminal, false, undefined, { mouse: false });
   const document = new Container();

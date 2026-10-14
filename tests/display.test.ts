@@ -16,7 +16,8 @@ const theme = { fg: (_: string, text: string) => text, bg: (_: string, text: str
 const plain = (text: string) => text.replace(/\x1b\[[0-9;:]*m/g, "");
 function context(args: unknown, expanded = false): DisplayContext {
   return { args, expanded, state: {}, toolCallId: "call", invalidate() {}, lastComponent: undefined,
-    cwd: process.cwd(), executionStarted: true, argsComplete: true, isPartial: false, isError: false, showImages: true };
+    cwd: process.cwd(), executionStarted: true, argsComplete: true, isPartial: false, isError: false, showImages: true,
+    durationMs: undefined, outputPad: 1 };
 }
 function render<T extends TSchema, D, S>(tool: ToolDefinition<T, D, S>, args: any, result: any, expanded = false, width = 100, error = false): string[] {
   const ctx: any = context(args, expanded);

@@ -53,7 +53,7 @@ test("hidden thinking leaves serial tools contiguous and preserves parallel sect
   } finally { release(); resetDisplayState("aggregate"); }
 });
 
-test("hidden standalone and streamed thinking retains normal text, errors and final statistics", () => {
+test("hidden thinking keeps only the live stream and retains normal text, errors and final statistics", () => {
   resetDisplayState("aggregate");
   const p = new ActivityProjection();
   const release = installActivityUI(p, () => theme);
@@ -61,6 +61,12 @@ test("hidden standalone and streamed thinking retains normal text, errors and fi
     setShowThinking(false);
     const streaming = new AssistantMessageComponent(undefined, true);
     streaming.updateContent(message([think("streamed secret")], 1000) as any, true);
+    assert.match(text(streaming.render(80)).join("\n"), /Thinking/);
+    const liveRows = streaming.render(80);
+    const liveIndex = text(liveRows).findIndex(row => row.includes("Thinking"));
+    assert.equal(streaming.handleMouse(click(liveIndex, liveRows.length))?.handled, true);
+    assert.match(text(streaming.render(80)).join("\n"), /streamed secret/);
+    streaming.updateContent(message([think("streamed secret"), call("running")], 1000) as any, true);
     assert.deepEqual(streaming.render(80), []);
     streaming.updateContent(message([think("streamed secret"), { type: "text", text: "public reply" }], 1000, "stop") as any, false);
     assert.deepEqual(text(streaming.render(80)), ["", " public reply"]);
@@ -150,7 +156,7 @@ test("standalone thinking before an answer stays uncolored and retains native ex
     const index = rows.findIndex(row => stripTerminalSequences(row).includes("Thinking..."));
     assert.equal(component.handleMouse(click(index, rows.length))?.handled, true);
     assert.match(text(component.render(80)).join("\n"), /standalone secret/);
-    assert.equal(p.summaryFor(final as any), undefined);
+    assert.equal(p.summaryFor(final as any)?.calls, 0);
   } finally { release(); }
 });
 

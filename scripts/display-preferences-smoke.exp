@@ -64,6 +64,10 @@ command "/tool-thinking hide" {thinking 展示：hide}
 command "/tool-color codemode pink" {codemode 工具名颜色：pink}
 command "/reload" {Reloaded keybindings}
 check hidden
+command "/reload" {Reloaded keybindings}
+check hidden
+command "/reload" {Reloaded keybindings}
+check hidden
 command "/tool-color" {codemode=pink.*bash=blue}
 command "/tool-color codemode reset" {codemode 工具名颜色：amber}
 send -- "\004"

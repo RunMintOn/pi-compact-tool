@@ -12,6 +12,7 @@ stage = sys.argv[2]
 # Notifications/editor may quote commands; inspect only the replay transcript.
 final = next(row for row, text in rows.items() if "DISPLAY FINAL ANSWER" in text)
 screen = "\n".join(text for row, text in sorted(rows.items()) if row <= final)
+assert sum("tokens ↑" in text for text in rows.values()) == 1, rows
 assert "codemode" in screen, screen
 assert ("Thinking..." in screen) == (stage != "hidden"), screen
 assert ("SCRIPT BODY" in screen) == (stage == "expanded"), screen

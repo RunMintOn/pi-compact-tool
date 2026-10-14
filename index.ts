@@ -97,7 +97,7 @@ export default function compactToolExtension(pi: ExtensionAPI): void {
   });
 
   pi.registerCommand("tool-thinking", {
-    description: "Show or hide all thinking in aggregate display",
+    description: "Show all thinking or hide finished thinking in aggregate display",
     getArgumentCompletions(prefix) {
       return ["show", "hide"].filter(value => value.startsWith(prefix)).map(value => ({ value, label: value }));
     },
@@ -163,6 +163,9 @@ export default function compactToolExtension(pi: ExtensionAPI): void {
     if (!interactive(ctx)) return;
     activity.agentEnded(event.messages, Date.now());
   });
+  pi.on("message_update", (event, ctx) => {
+    if (interactive(ctx)) activity.streamUpdated(event.message, event.assistantMessageEvent);
+  });
   pi.on("message_end", (event, ctx) => {
     if (!interactive(ctx)) return;
     activity.ingest(event.message);
@@ -182,6 +185,8 @@ export default function compactToolExtension(pi: ExtensionAPI): void {
   });
   pi.on("agent_settled", async (_event, ctx) => {
     if (!interactive(ctx)) return;
+    activity.settled(Date.now());
+    refreshDisplayRows();
     const timing = activity.timingRecord();
     try {
       const report = await changes.finish(Date.now(), outcome);
@@ -197,7 +202,7 @@ export default function compactToolExtension(pi: ExtensionAPI): void {
       ctx.ui.notify(`Could not save change report: ${error instanceof Error ? error.message : String(error)}`, "warning");
     }
     outcome = "completed";
-    if (timing.finalKey && timing.finalKey !== persistedFinal && timing.calls.length) {
+    if (timing.finalKey && timing.finalKey !== persistedFinal) {
       // Non-context custom data makes observed parallel/serial dispatch and wall time
       // survive reload without adding model-visible messages or altering tool results.
       pi.appendEntry(ACTIVITY_ENTRY, timing);

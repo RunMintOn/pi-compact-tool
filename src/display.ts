@@ -167,7 +167,7 @@ class AggregateShell implements Component {
     const header = new SummaryLine(label + target, suffix).render(Math.max(1, width - padding * 2))[0] ?? "";
     const rows = [truncateToWidth(" ".repeat(padding) + header, width, "…")];
     if (this.body) rows.push(...this.body.render(Math.max(1, width - 3)).map(row => truncateToWidth("   " + row, width, "…")));
-    const painted = rows.map(row => panelLine(row, width, theme));
+    const painted = rows.map(row => panelLine(row, width, theme, this.context.isPartial));
     this.cached = { width, padding, bashLines, rows: painted };
     return painted;
   }

@@ -89,11 +89,11 @@ test("actual Pi session loads the extension, retains active tools and switches e
       now = 21000;
       await runner.emit({ type: "message_end", message: final });
       await runner.emit({ type: "agent_end", messages: [user, toolMessage, final] });
+      await runner.emit({ type: "agent_settled" });
       const rendered = new AssistantMessageComponent(final as any, true).render(120).map(stripTerminalSequences).join("\n");
       assert.match(rendered, /total 20s \(tools 10s\) · TPS 90\.0 tok\/s · \$0\.000/);
       assert.doesNotMatch(rendered, /Tools/);
       assert.equal(notices.length, noticeCount);
-      await runner.emit({ type: "agent_settled" });
       const record = session.sessionManager.getBranch().find(entry => entry.type === "custom" && entry.customType === "compact-tool.activity.v1");
       assert.equal((record as any)?.data.tps, 90);
       assert.equal((record as any)?.data.tpsBasis, "excluding-tools");

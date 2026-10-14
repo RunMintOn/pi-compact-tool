@@ -19,13 +19,14 @@ export interface ActivitySummary {
   turns: number;
   counts: Map<string, number>;
   usage: { input: number; output: number; cacheRead: number; cacheWrite: number };
+  hasUsage?: boolean;
   cost?: number;
   start?: number;
   end?: number;
   toolMs?: number;
   tps?: number;
 }
-interface Request extends ActivitySummary { ids: string[]; finalKey?: string; }
+interface Request extends ActivitySummary { ids: string[]; messageKeys: string[]; finalKey?: string; settled?: boolean; }
 export interface TimingRecord {
   calls: Array<{ id: string; start?: number; end?: number; parallel: boolean; lines?: number }>; 
   finalKey?: string;
@@ -33,6 +34,8 @@ export interface TimingRecord {
   end?: number;
   tps?: number;
   tpsBasis?: "excluding-tools";
+  messageKeys?: string[];
+  summary?: Pick<Request, "calls" | "turns" | "usage" | "hasUsage" | "cost" | "ids"> & { counts: Array<[string, number]> };
 }
 function calls(message: Message): Call[] {
   if (!Array.isArray(message.content)) return [];
@@ -44,6 +47,21 @@ function key(message: Message): string {
 function thinkingId(message: Message, run: number): string { return `${key(message)}:thinking:${run}`; }
 function terminal(message: Message): boolean {
   return message.role === "assistant" && calls(message).length === 0 && ["stop", "error", "aborted", "length"].includes(message.stopReason ?? "");
+}
+function newRequest(start?: number): Request {
+  return { calls: 0, turns: 0, counts: new Map(), usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, hasUsage: false, ids: [], messageKeys: [], start };
+}
+function accumulate(request: Request, message: Message): void {
+  request.messageKeys.push(key(message));
+  request.turns++;
+  request.hasUsage ||= message.usage?.input !== undefined || message.usage?.output !== undefined;
+  for (const metric of ["input", "output", "cacheRead", "cacheWrite"] as const) request.usage[metric] += message.usage?.[metric] ?? 0;
+  if (message.usage?.cost?.total !== undefined) request.cost = (request.cost ?? 0) + message.usage.cost.total;
+  for (const call of calls(message)) {
+    request.ids.push(call.id);
+    request.calls++;
+    request.counts.set(call.name, (request.counts.get(call.name) ?? 0) + 1);
+  }
 }
 
 /** Display-only projection of the active transcript; no messages or tool results are changed. */
@@ -58,8 +76,45 @@ export class ActivityProjection {
   private seen = new Set<string>();
   private current?: Request;
   private agentStartMs: number | null = null;
+  private running = false;
+  private streamObserved = false;
+  private thinkingStream?: { messageKey: string; contentIndex: number };
 
-  agentStarted(now: number): void { this.agentStartMs = now; }
+  streamUpdated(message: Message, event: { type: string; contentIndex?: number }): void {
+    this.streamObserved = true;
+    this.thinkingStream = (event.type === "thinking_start" || event.type === "thinking_delta") && event.contentIndex !== undefined
+      ? { messageKey: key(message), contentIndex: event.contentIndex } : undefined;
+  }
+  activeThinkingRun(message: Message, isStreaming: boolean): number | undefined {
+    if (!isStreaming || !Array.isArray(message.content)) return undefined;
+    const blocks = message.content;
+    const contentIndex = this.streamObserved
+      ? this.thinkingStream?.messageKey === key(message) ? this.thinkingStream.contentIndex : undefined
+      : blocks.length - 1;
+    if (contentIndex === undefined || blocks[contentIndex]?.type !== "thinking") return undefined;
+    let run = 0;
+    for (let index = 0; index < blocks.length; index++) {
+      if (blocks[index]?.type !== "thinking") continue;
+      const start = index;
+      let visible = false;
+      while (index < blocks.length && blocks[index]?.type === "thinking") {
+        visible ||= Boolean(blocks[index].thinking?.trim());
+        index++;
+      }
+      if (visible) {
+        if (contentIndex >= start && contentIndex < index) return run;
+        run++;
+      }
+      index--;
+    }
+    return undefined;
+  }
+
+  agentStarted(now: number): void {
+    if (!this.running && this.current?.settled) this.current = undefined;
+    this.agentStartMs = now;
+    this.running = true;
+  }
   agentEnded(messages: readonly Message[], now: number): void {
     if (this.agentStartMs === null) return;
     const start = this.agentStartMs;
@@ -72,28 +127,38 @@ export class ActivityProjection {
     const output = messages.reduce((total, message) => total + (message.role === "assistant" ? message.usage?.output || 0 : 0), 0);
     if (output <= 0) return;
     const final = [...messages].reverse().find(terminal);
-    const request = final ? this.summaries.get(key(final)) : undefined;
+    const request = final && this.current?.messageKeys.includes(key(final)) ? this.current : undefined;
     if (request) request.tps = output / (elapsedMs / 1000);
+  }
+  settled(now: number): void {
+    this.running = false;
+    this.thinkingStream = undefined;
+    const request = this.current;
+    const finalKey = request?.messageKeys.at(-1);
+    if (!request || !finalKey) return;
+    request.finalKey = finalKey;
+    request.settled = true;
+    request.end = now;
+    this.summaries.set(finalKey, request);
   }
 
   ingest(message: Message): void {
     if (message.role === "user") {
       this.currentRegion = undefined;
-      this.current = { calls: 0, turns: 0, counts: new Map(), usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, ids: [], start: message.timestamp };
+      if (!this.running || !this.current) this.current = newRequest(message.timestamp);
       return;
     }
     if (message.role !== "assistant") return;
+    this.thinkingStream = undefined;
     const messageKey = key(message);
     if (this.seen.has(messageKey)) return;
     this.seen.add(messageKey);
-    this.current ??= { calls: 0, turns: 0, counts: new Map(), usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, ids: [], start: message.timestamp };
+    this.current ??= newRequest(message.timestamp);
     const request = this.current;
     if (request.finalKey) this.summaries.delete(request.finalKey);
     request.finalKey = undefined;
     request.tps = undefined;
-    request.turns++;
-    for (const metric of ["input", "output", "cacheRead", "cacheWrite"] as const) request.usage[metric] += message.usage?.[metric] ?? 0;
-    if (message.usage?.cost?.total !== undefined) request.cost = (request.cost ?? 0) + message.usage.cost.total;
+    accumulate(request, message);
     const toolCalls = calls(message);
     const batch = { ids: toolCalls.map(call => call.id), observed: false };
     const addNode = (id: string) => {
@@ -119,21 +184,23 @@ export class ActivityProjection {
     }
     for (const call of toolCalls) {
       this.batches.set(call.id, batch);
-      request.ids.push(call.id);
-      request.calls++;
-      request.counts.set(call.name, (request.counts.get(call.name) ?? 0) + 1);
     }
     if (terminal(message)) {
       request.finalKey = messageKey;
       request.end = message.timestamp;
-      this.summaries.set(messageKey, request);
+      if (!this.running) this.summaries.set(messageKey, request);
       this.currentRegion = undefined;
     }
   }
 
   rebuild(entries: readonly unknown[]): void {
+    const active = this.running ? {
+      request: this.current, start: this.agentStartMs, timings: new Map(this.timings),
+      streamObserved: this.streamObserved, thinkingStream: this.thinkingStream,
+    } : undefined;
     this.batches.clear(); this.regions.clear(); this.currentRegion = undefined;
-    this.timings.clear(); this.summaries.clear(); this.seen.clear(); this.current = undefined; this.agentStartMs = null;
+    this.timings.clear(); this.summaries.clear(); this.seen.clear(); this.current = undefined; this.agentStartMs = null; this.running = false;
+    this.streamObserved = false; this.thinkingStream = undefined;
     for (const value of entries) {
       const entry = value as { type: string; message?: Message; retainedTail?: unknown[] };
       if (entry.type === "message" && entry.message) {
@@ -148,6 +215,17 @@ export class ActivityProjection {
     for (const value of entries) {
       const entry = value as { type: string; customType?: string; data?: TimingRecord };
       if (entry.type === "custom" && entry.customType === ACTIVITY_ENTRY && entry.data) this.restoreTiming(entry.data);
+    }
+    const current = this.current as Request | undefined;
+    if (current?.finalKey) current.settled = true;
+    if (active) {
+      this.running = true;
+      this.current = active.request;
+      this.agentStartMs = active.start;
+      this.streamObserved = active.streamObserved;
+      this.thinkingStream = active.thinkingStream;
+      for (const [id, timing] of active.timings) this.timings.set(id, timing);
+      for (const messageKey of active.request?.messageKeys ?? []) this.summaries.delete(messageKey);
     }
   }
 
@@ -217,7 +295,7 @@ export class ActivityProjection {
   }
   bashLines(id: string): number | undefined { return this.timings.get(id)?.lines; }
   completed(message: Message, now: number): void {
-    const request = this.summaries.get(key(message));
+    const request = this.current?.finalKey === key(message) ? this.current : this.summaries.get(key(message));
     if (request) request.end = now;
   }
   setChanges(finalKey: string, link: ChangeLink): void { this.changes.set(finalKey, link); }
@@ -244,11 +322,15 @@ export class ActivityProjection {
   summaryFor(message: Message): ActivitySummary | undefined {
     const messageKey = key(message);
     const request = this.summaries.get(messageKey);
-    return request?.calls ? { ...request, toolMs: this.toolWallMs(request.ids, request.start, request.end), changes: this.changes.get(messageKey) } : undefined;
+    if (!request || (this.running && request === this.current)) return undefined;
+    return { ...request, toolMs: request.calls ? this.toolWallMs(request.ids, request.start, request.end) : undefined, changes: this.changes.get(messageKey) };
   }
   timingRecord(): TimingRecord {
     const request = this.current;
-    return { calls: (request?.ids ?? []).flatMap(id => {
+    return { summary: request ? {
+      calls: request.calls, turns: request.turns, counts: [...request.counts],
+      usage: { ...request.usage }, hasUsage: request.hasUsage, cost: request.cost, ids: [...request.ids],
+    } : undefined, messageKeys: request ? [...request.messageKeys] : undefined, calls: (request?.ids ?? []).flatMap(id => {
       const timing = this.timings.get(id);
       return timing ? [{ id, ...timing }] : [];
     }), finalKey: request?.finalKey, start: request?.start, end: request?.end, tps: request?.tps, tpsBasis: "excluding-tools" };
@@ -257,9 +339,21 @@ export class ActivityProjection {
     if (!Array.isArray(record.calls)) return;
     for (const timing of record.calls) {
       const batch = this.batches.get(timing.id);
-      if (batch) { batch.observed = true; this.timings.set(timing.id, timing); }
+      if (batch) batch.observed = true;
+      this.timings.set(timing.id, timing);
     }
-    const request = record.finalKey ? this.summaries.get(record.finalKey) : undefined;
+    let request = record.finalKey ? this.summaries.get(record.finalKey) : undefined;
+    if (record.finalKey && record.summary && Array.isArray(record.messageKeys)) {
+      // A settled snapshot keeps totals stable even after compaction removes messages.
+      request = { ...newRequest(record.start), ...record.summary,
+        ids: [...record.summary.ids], usage: { ...record.summary.usage },
+        counts: new Map(record.summary.counts), messageKeys: [...record.messageKeys],
+        finalKey: record.finalKey, settled: true,
+      };
+      for (const messageKey of record.messageKeys) this.summaries.delete(messageKey);
+      this.summaries.set(record.finalKey, request);
+      if (this.current?.messageKeys.some(messageKey => record.messageKeys!.includes(messageKey))) this.current = request;
+    }
     if (request) { request.start = record.start ?? request.start; request.end = record.end ?? request.end; request.tps = record.tpsBasis === "excluding-tools" ? record.tps : undefined; }
   }
 }
@@ -281,7 +375,7 @@ function clock(ms: number): string {
 export function renderActivitySummary(summary: ActivitySummary, theme: Theme, width: number, outputPad = 1): string[] {
   if (width < 1) return [];
   const counts = [...summary.counts].map(([name, count]) => toolLabel(name, `${name} ×${count}`, theme)).join(" · ");
-  const heading = `${theme.fg("muted", `${summary.calls} calls · ${summary.turns} turns`)} · ${counts}`;
+  const heading = theme.fg("muted", summary.calls ? `${summary.calls} calls · ${summary.turns} turns` : `${summary.turns} turns`) + (counts ? ` · ${counts}` : "");
   const parts: string[] = [];
   if (summary.start !== undefined && summary.end !== undefined) {
     const tools = summary.toolMs !== undefined ? ` (tools ${duration(summary.toolMs)})` : "";
@@ -289,7 +383,7 @@ export function renderActivitySummary(summary: ActivitySummary, theme: Theme, wi
   }
   if (summary.tps !== undefined) parts.push(`TPS ${summary.tps.toFixed(1)} tok/s`);
   if (summary.cost !== undefined) parts.push(`$${summary.cost.toFixed(3)}`);
-  parts.push(`tokens ↑${tokens(summary.usage.input)} ↓${tokens(summary.usage.output)}`);
+  if (summary.hasUsage !== false) parts.push(`tokens ↑${tokens(summary.usage.input)} ↓${tokens(summary.usage.output)}`);
   if (summary.usage.cacheRead) parts.push(`cache read ${tokens(summary.usage.cacheRead)}`);
   if (summary.usage.cacheWrite) parts.push(`cache write ${tokens(summary.usage.cacheWrite)}`);
   const date = summary.end !== undefined ? theme.fg("muted", `· ${clock(summary.end)}`) : "";
@@ -318,17 +412,17 @@ export function installActivityUI(projection: ActivityProjection, getTheme: () =
   const originalToolRender = tool.render;
   const originalMouse = tool.handleMouse;
   const originalAssistantRender = assistant.render;
-  type NativeTool = { toolCallId: string; rendererState: { compactAggregate?: unknown }; selfRenderHeight: number; imageComponents: unknown[]; };
+  type NativeTool = { toolCallId: string; isPartial: boolean; rendererState: { compactAggregate?: unknown }; selfRenderHeight: number; imageComponents: unknown[]; };
   type NativeAssistant = { lastMessage?: Message; isStreaming: boolean; outputPad: number; contentContainer: { children: Component[]; mouseLayout?: unknown } };
   const renderedAssistants = new Set<AssistantMessageComponent>();
   const adaptedTools = new Map<ToolExecutionComponent, () => void>();
   const compact = (instance: ToolExecutionComponent) => getDisplayStyle() === "aggregate" && Boolean((instance as unknown as NativeTool).rendererState.compactAggregate);
-  function prefix(id: string, width: number): string[] {
+  function prefix(id: string, width: number, pending = false): string[] {
     const theme = getTheme();
     const count = projection.parallelCount(id);
     return [
-      ...(projection.startsBlock(id) ? ["", panelLine("", width, theme)] : projection.startsSection(id) ? [panelLine("", width, theme)] : []),
-      ...(count ? [panelLine(truncateToWidth(" ".repeat(getOutputPad()) + truncateToWidth(`${parallelLabel(theme)}${theme.fg("muted", ` · ${count} calls`)}`, Math.max(1, width - getOutputPad() * 2), "…"), width, "…"), width, theme)] : []),
+      ...(projection.startsBlock(id) ? ["", panelLine("", width, theme, pending)] : projection.startsSection(id) ? [panelLine("", width, theme, pending)] : []),
+      ...(count ? [panelLine(truncateToWidth(" ".repeat(getOutputPad()) + truncateToWidth(`${parallelLabel(theme)}${theme.fg("muted", ` · ${count} calls`)}`, Math.max(1, width - getOutputPad() * 2), "…"), width, "…"), width, theme, pending)] : []),
     ];
   }
   function toolRender(this: ToolExecutionComponent, width: number): string[] {
@@ -345,9 +439,9 @@ export function installActivityUI(projection: ActivityProjection, getTheme: () =
       // Keep native image rows and protocols in place; close the text panel before
       // the image and pad its continuation without duplicating section separators.
       const next = projection.nextInBlock(id);
-      const padding = panelLine("", width, getTheme());
+      const padding = panelLine("", width, getTheme(), native.isPartial);
       return [
-        ...prefix(id, width),
+        ...prefix(id, width, native.isPartial),
         ...content.slice(0, native.selfRenderHeight),
         padding,
         ...content.slice(native.selfRenderHeight),
@@ -355,9 +449,9 @@ export function installActivityUI(projection: ActivityProjection, getTheme: () =
       ];
     }
     return [
-      ...prefix(id, width),
+      ...prefix(id, width, native.isPartial),
       ...content,
-      ...(projection.endsBlock(id) ? [panelLine("", width, getTheme())] : []),
+      ...(projection.endsBlock(id) ? [panelLine("", width, getTheme(), native.isPartial)] : []),
     ];
   }
   function toolMouse(this: ToolExecutionComponent, event: TuiMouseEvent) {
@@ -373,12 +467,15 @@ export function installActivityUI(projection: ActivityProjection, getTheme: () =
     if (getDisplayStyle() !== "aggregate" || !native.lastMessage || width < 1) return originalAssistantRender.call(this, width);
     const children = native.contentContainer.children;
     const showThinking = getDisplayPreferences().showThinking;
+    const liveRun = showThinking ? undefined : projection.activeThinkingRun(native.lastMessage, native.isStreaming);
+    const liveThinking = liveRun !== undefined ? children.filter(child => child instanceof MouseRegion)[liveRun] : undefined;
+    const hiddenThinking = (child: Component | undefined) => child instanceof MouseRegion && child !== liveThinking;
     // A native MouseRegion in assistant content is a thinking run, not normal Markdown.
     const visibleChildren = showThinking ? children : children.filter((child, index) => {
-      if (child instanceof MouseRegion) return false;
+      if (child instanceof MouseRegion) return child === liveThinking;
       if (!(child instanceof Spacer)) return true;
-      if (index === 0) return children.some(other => !(other instanceof MouseRegion) && !(other instanceof Spacer));
-      return !(children[index - 1] instanceof MouseRegion) && !(children[index + 1] instanceof MouseRegion);
+      if (index === 0) return children.some(other => !(other instanceof Spacer) && !hiddenThinking(other));
+      return !hiddenThinking(children[index - 1]) && !hiddenThinking(children[index + 1]);
     });
     let run = 0;
     const thinking = new Map<Component, string>();

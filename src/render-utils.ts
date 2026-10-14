@@ -102,8 +102,9 @@ export function toolLabel(name: string, text: string, theme: Theme): string {
 }
 
 /** Truncation may insert SGR 0: restore the panel after resets inside the row. */
-export function panelLine(text: string, width: number, theme: Theme): string {
-  const background = backgroundAnsi(panelColors[theme.appearance], theme.getColorMode());
+export function panelLine(text: string, width: number, theme: Theme, pending = false): string {
+  const background = pending && theme.getBgAnsi
+    ? theme.getBgAnsi("toolPendingBg") : backgroundAnsi(panelColors[theme.appearance], theme.getColorMode());
   const padded = text + " ".repeat(Math.max(0, width - visibleWidth(text)));
   return background + padded.replace(/\x1b\[(?:0|49)?m/g, reset => reset + background) + "\x1b[49m";
 }

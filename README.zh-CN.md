@@ -56,12 +56,12 @@ pi -ne -e ./index.ts --tui-mode fullscreen --compact-style tidy
 /codemode-view calls    B：摘要下完整显示原生嵌套调用区域
 /tool-thinking         切换 thinking 显示／隐藏
 /tool-thinking show    显示 thinking（默认，沿用原生展开状态）
-/tool-thinking hide    隐藏全部 thinking，包括独立与运行中的 thinking
+/tool-thinking hide    隐藏已结束的 thinking，仅显示当前正在生成的一段
 ```
 
 两项设置独立，仅影响 aggregate。切换立即刷新已有记录，不改变单条工具的展开状态。B 不显示脚本及输出正文；调用列表保留原生展开时的参数、换行、状态、耗时、错误与费用信息，全部调用显示，并实时更新运行状态。无嵌套调用时 A / B 都保持单行。点击摘要或任意调用行展开整个 codemode，再次收起时恢复所选 A / B；`Ctrl+O` 保持原生全局展开操作。
 
-隐藏 thinking 不修改模型思考设置或消息内容，不显示 `Thinking...` 占位，也不留下空行。串行工具连续排列；parallel 组保留分组间距。重新显示时保留 thinking 原有展开状态，普通正文、错误及最终统计不受影响。tidy / claude 保持原生 thinking 展示。
+隐藏 thinking 不修改模型思考设置或消息内容。当前正在生成的一段仍使用原生内容和展开交互；思考结束时立即隐藏，工具参数生成、执行、正文输出和停止阶段不保留旧 thinking，也不留下空行。串行工具连续排列；parallel 组保留分组间距。重新显示时保留 thinking 原有展开状态，普通正文、错误及最终统计不受影响。tidy / claude 保持原生 thinking 展示。
 
 命令自动保存到 `getAgentDir()/extension-data/pi-compact-tool/preferences.json`，通常为 `~/.pi/agent/extension-data/pi-compact-tool/preferences.json`。所有项目共用，跨新会话和 reload 恢复；首次默认 A + thinking 显示。`/tool-style` 仍不持久化。保存失败时报告错误，不改变当前偏好。
 
@@ -103,15 +103,16 @@ aggregate 统计第一行在工具枚举后显示 **View changes**。宽度不�
 - Think 不决定分组。同一条 assistant 消息内的多工具调用构成候选 parallel 组。连续的单次调用即使中间没有 Think，也不添加标题；它们仍紧贴排列。
 - 新调用观察 `tool_execution_start/end`：同组出现活动区间重叠时，为整个 parallel 调用组显示标题；全组实际串行时不显示。标题表示整组派发，不表示每条工具的独立重叠区间。这里观察的是 Pi 的工具调度事件，不是操作系统进程的 CPU 执行时间。
 - 旧 transcript 没有执行事件时，按同一条 assistant 消息中的多调用恢复 parallel 标题，只代表同批派发，不能证明真实时间重叠。
-- 新调用的调度标记、Bash 输出行数和请求起止时间保存为非模型上下文的 custom entry，供 reload / 历史回放使用，不改变工具结果或模型消息。
+- 新调用的调度标记、Bash 输出行数、任务起止时间、消息关联和结算统计快照保存为非模型上下文的 custom entry，供 reload / 历史回放使用，不改变工具结果或模型消息。重复 reload 不重复显示或累计；快照保留上下文压缩前的统计值。旧记录仅恢复已有数据，不迁移或猜测历史追加消息的任务边界。
 - 分类计数包含失败调用。`turns` 统计本次请求的 assistant 消息数，包含最终回答；不等于用户消息数。Think 继续使用原生内容与点击展开／收起，仅在所在连续区域含工具调用时融入背景；独立 Think 保持原生外观；普通正文和旁白保持无背景，并打断区域。parallel 标题只出现在对应工具组前面。
-- 统计覆盖用户消息之后、最终回答之前的本次请求，显示在最终回答后。耗时是这次请求的墙钟时间，不是工具耗时求和；旧记录没有精确时间时，使用消息时间戳估算。尚未完成的请求不显示最终统计。统计前保留一行空白，使用普通文字，无面板背景；首行直接从调用数开始，不显示 `Tools` 标签，保留正文原生缩进。
+- 统计覆盖一次连续任务，仅在 `agent_settled` 确认完全停止后，显示在最后一条 assistant 消息下方。运行中的 steering、follow-up 和续跑合并调用、轮数、耗时、token 和费用，不在中途回答后显示统计；停止后的新任务独立统计。正常完成、中止和错误停止都结算一次。耗时是从起点到完全停止的墙钟时间，不是工具耗时求和；旧记录没有精确时间时，使用消息时间戳估算。纯文字回答同样显示，省略工具分类、调用数和工具耗时；缺失数据不编造。统计前保留一行空白，使用普通文字，无面板背景，不显示 `Tools` 标签，保留正文原生缩进。
 - 时间显示为 `total 2m 10s (tools 1m 40s) · TPS 30.0 tok/s`。`tools` 是本次用户请求内所有顶层工具执行时间段的并集，并行重叠只算一次，嵌套调用已包含在父工具时间内，不重复计算。时间包括 Pi 的准备、确认和结果处理，不仅是 Bash 进程时间。工具计时缺失或无效时不显示工具耗时，不估算。
-- TPS 累计本次 `agent_end.messages` 中 assistant 的 `usage.output`，除以 `agent_start` 到 `agent_end` 的总秒数减去该次运行的工具时间段并集；工具时间段裁剪到该次运行的起止范围。仍包含工具阶段以外的网络等待和思考，不拆分 reasoning token。TPS 按该次 agent 运行计算，工具耗时及其他计数按用户请求累计，包含续跑。新 TPS 连同公式标记保存到已有 custom entry，reload 后恢复；旧记录可从完整工具计时恢复工具耗时，但不显示旧口径 TPS。无有效起点、工具计时、剩余耗时或输出时不显示 TPS。仅在 aggregate 已有统计中加入，不新增纯回答统计或通知；停用独立 `tps.ts`，避免重复通知。
-- 费用显示为 `$0.641`，保留三位小数。从当前用户消息到这次回答结束，累加其间所有 assistant 消息的 `usage.cost.total`，包含中间多次模型调用，不累计之前消息的费用。金额使用 Pi 已记录的美元费用估算，不额外查询账单或自行计算价格；每条新用户消息重新计费。reload 从消息 usage 恢复，旧记录缺少费用数据时不显示金额。
+- TPS 累计本次 `agent_end.messages` 中 assistant 的 `usage.output`，除以 `agent_start` 到 `agent_end` 的总秒数减去该次运行的工具时间段并集；工具时间段裁剪到该次运行的起止范围。仍包含工具阶段以外的网络等待和思考，不拆分 reasoning token。TPS 保留按最后一次 agent 运行计算的口径，工具耗时及其他计数按连续任务累计，包含追加消息和续跑。新 TPS 连同公式标记保存到已有 custom entry，reload 后恢复；旧记录可从完整工具计时恢复工具耗时，但不显示旧口径 TPS。无有效起点、工具计时、剩余耗时或输出时不显示 TPS。不新增通知；停用独立 `tps.ts`，避免重复通知。
+- 费用显示为 `$0.641`，保留三位小数。累加连续任务内所有 assistant 消息的 `usage.cost.total`，包含中间多次模型调用、steering 和 follow-up，不累计之前任务的费用。金额使用 Pi 已记录的美元费用估算，不额外查询账单或自行计算价格；完全停止后的新任务重新计费。旧记录从消息 usage 恢复，缺少费用数据时不显示金额。
 - Bash 行数优先统计官方提供的输出数据，不把 `(no output)` 和退出状态说明算成命令输出。忽略末尾换行，不计算终端自动折行。输出已被官方工具截断时显示 `truncated`，使用其输出行数元数据，不读取完整输出文件。旧记录没有保存行数时，回退为收到的文字结果行数；可能包含原生状态说明。
 - aggregate 使用样稿的低对比度底色和绿／紫／蓝／琥珀工具名配色，按主题的深浅模式和终端颜色能力显示。工具区域中的 Think 前保留一行同底色空白，后面紧贴工具；区域开头复用顶部留白，共用一个连续区域；区域与普通正文之间保留一行，色块内部上下各有一行留白，所有工具名与正文左对齐，遵循原生 `outputPad`（默认 1 列，可设为 0），不保留竖线或额外左侧标记空间。parallel 组前显示低饱和蓝灰色的 `parallel · N calls` 标题，标题紧贴下面的工具。组前及组后接普通工具时，各保留一行同底色空白；相邻 parallel 组之间只有一行空白。区域首尾复用已有留白，不叠加。普通串行工具仍紧贴排列，整段背景不按组拆分。截断或高亮产生的 ANSI reset 后恢复区域底色，避免摘要出现黑底缺口。
 - aggregate 通过可撤销的原生工具 `render/handleMouse` 和 assistant `render` patch 去掉区域内部的逐条空白、追加末尾统计。只在 TUI 会话安装，reload / shutdown 恢复，装饰 Think 背景和布局，并可隐藏其显示，点击转发给原生 MouseRegion；不修改 Think 内容、折叠状态、图片协议或工具执行逻辑。
+- 工具从参数生成到执行结束使用 Pi 原生 `toolPendingBg` 灰色背景，包含展开正文、标题和区域留白。仅未完成的工具区域变灰，邻近已完成区域不变。成功或失败后恢复 aggregate 原背景，工具名称配色和错误展示保持原规则。
 
 ## 图片
 
@@ -158,6 +159,8 @@ pi.registerTool(decorateTool(existingSearchTool, {
 本版没有整组 Run 折叠、独立详情弹窗、额外意图字段、项目一的工具类别快捷键或 Markdown 自动展开模式。点击使用原生单条展开／收起；未接入的自定义工具仍保留自身显示和间距。
 
 ## 本地验证
+
+本次连续任务统计、thinking 和 pending 背景修复见 [生命周期验证](./checks/activity-lifecycle-validation.md)。
 
 ```bash
 npm install --ignore-scripts --legacy-peer-deps

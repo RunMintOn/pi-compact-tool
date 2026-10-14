@@ -78,6 +78,18 @@ test("history without cost data omits the amount", () => {
   assert.doesNotMatch(plain(renderActivitySummary(p.summaryFor(final)!, colorTheme, 120)), /\$/);
 });
 
+test("old answer-only history without usage does not invent token or cost data", () => {
+  const p = new ActivityProjection();
+  const final = { role: "assistant", timestamp: 2000, stopReason: "stop", content: [{ type: "text", text: "old reply" }] };
+  p.rebuild([
+    { type: "message", message: { role: "user", timestamp: 1000 } },
+    { type: "message", message: final },
+  ]);
+  const rendered = plain(renderActivitySummary(p.summaryFor(final)!, colorTheme, 120));
+  assert.match(rendered, /1 turns/);
+  assert.doesNotMatch(rendered, /tokens|cache|\$|TPS|calls|tools /);
+});
+
 test("TPS excludes tool wall time and restores the new formula on replay", () => {
   const p = new ActivityProjection();
   p.ingest({ role: "user", timestamp: 1000 });
@@ -93,9 +105,10 @@ test("TPS excludes tool wall time and restores the new formula on replay", () =>
     { ...final, usage: { ...usage, output: 300 } },
   ];
   p.agentEnded(messages, 21000);
+  p.settled(21000);
   assert.equal(p.summaryFor(final as any)?.tps, 90);
   assert.equal(p.summaryFor(final as any)?.toolMs, 10000);
-  assert.match(plain(renderActivitySummary(p.summaryFor(final as any)!, colorTheme, 120)), /total 18s \(tools 10s\) · TPS 90\.0 tok\/s · \$0\.000 · tokens/);
+  assert.match(plain(renderActivitySummary(p.summaryFor(final as any)!, colorTheme, 120)), /total 20s \(tools 10s\) · TPS 90\.0 tok\/s · \$0\.000 · tokens/);
   for (const width of [1, 2, 20, 60, 100]) {
     assert.ok(renderActivitySummary(p.summaryFor(final as any)!, colorTheme, width).every(row => visibleWidth(row) <= width));
   }
@@ -128,12 +141,15 @@ test("TPS skips missing starts, zero elapsed time and zero output, and resets be
   p.agentEnded([final], 5000);
   assert.equal(p.summaryFor(final as any)?.tps, undefined);
   p.agentStarted(5000); p.agentEnded([final], 6000);
+  p.settled(6000);
   assert.equal(p.summaryFor(final as any)?.tps, 20);
   p.ingest({ role: "user", timestamp: 7000 });
   const next = assistant([{ type: "text", text: "no tools" }], 8000, "stop");
   p.ingest(next as any);
   p.agentStarted(7000); p.agentEnded([next], 9000);
-  assert.equal(p.summaryFor(next as any), undefined);
+  p.settled(9000);
+  assert.equal(p.summaryFor(next as any)?.calls, 0);
+  assert.equal(p.summaryFor(next as any)?.tps, 10);
   assert.equal(p.summaryFor(final as any)?.tps, 20);
 });
 
@@ -142,10 +158,12 @@ test("a continuation without output does not reuse the previous run's TPS", () =
   const first = assistant([{ type: "text", text: "first" }], 2000, "stop");
   p.ingest(first as any);
   p.agentStarted(1000); p.agentEnded([first], 3000);
+  p.settled(3000);
   assert.equal(p.summaryFor(first as any)?.tps, 10);
   p.agentStarted(4000);
   const next = { ...assistant([{ type: "text", text: "next" }], 5000, "stop"), usage: { ...usage, output: 0 } };
   p.ingest(next as any); p.agentEnded([next], 6000);
+  p.settled(6000);
   assert.equal(p.summaryFor(next as any)?.tps, undefined);
 });
 
@@ -161,6 +179,7 @@ test("parallel tool intervals are merged; serial intervals and failed/aborted re
   const final = assistant([{ type: "text", text: "done" }], 11000, "aborted");
   p.ingest(final);
   p.agentEnded([tools, final], 11000);
+  p.settled(11000);
   assert.equal(p.summaryFor(final)?.toolMs, 7000);
   assert.equal(p.summaryFor(final)?.tps, 40 / 3);
   p.ingest({ role: "user", timestamp: 12000 });
@@ -178,6 +197,7 @@ test("TPS clips tools to the agent run while displayed tools cover the user requ
   p.ingest(nextTools); p.started("next", 6000); p.ended("next", 10000);
   const final = assistant([{ type: "text", text: "final" }], 12000, "stop");
   p.ingest(final); p.agentStarted(7000); p.agentEnded([nextTools, final], 11000);
+  p.settled(11000);
   assert.equal(p.summaryFor(final)?.toolMs, 6000);
   assert.equal(p.summaryFor(final)?.tps, 40);
 });
@@ -191,6 +211,7 @@ test("missing tool timing and zero remaining model time omit TPS", () => {
     if (end !== undefined) p.ended("a", end);
     const final = assistant([{ type: "text", text: "done" }], 2000, "stop");
     p.ingest(final); p.agentStarted(1000); p.agentEnded([tools, final], 2000);
+    p.settled(2000);
     assert.equal(p.summaryFor(final)?.tps, undefined);
     if (end === undefined) assert.equal(p.summaryFor(final)?.toolMs, undefined);
   }
@@ -229,7 +250,9 @@ test("live execution events override inferred multi-call grouping for sequential
 });
 
 test("history rebuild restores sequential dispatch and precise timing, and request summaries remain separate", () => {
-  const p = fixture();
+  const p = new ActivityProjection();
+  p.ingest({ role: "user", timestamp: 1000 });
+  p.ingest(assistant([call("r1"), call("r2")], 1100));
   p.started("r1", 1400); p.ended("r1", 1450);
   p.started("r2", 1460); p.ended("r2", 1500);
   const final = assistant([{ type: "text", text: "first final" }], 1900, "stop");
