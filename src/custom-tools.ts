@@ -6,6 +6,7 @@ import { firstLine, lineCount, panelLine, plural, textOutput } from "./render-ut
 import { getDisplayPreferences, getDisplayStyle } from "./state.ts";
 
 function adapter(name: string): DisplayAdapter | undefined {
+  if (name === "bash") return { kind: "bash" };
   if (name === "apply_patch") return {
     kind: "edit",
     target: args => {

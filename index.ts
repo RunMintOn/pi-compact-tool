@@ -11,7 +11,10 @@ const styles: DisplayStyle[] = ["aggregate", "tidy", "claude"];
 const labels: Record<DisplayStyle, string> = { aggregate: "聚合风格（aggregate）", tidy: "项目一风格（tidy）", claude: "项目三风格（claude）" };
 export default function compactToolExtension(pi: ExtensionAPI): void {
   const changes = new ChangeTracker();
-  for (const tool of createDisplayTools(() => pi.getSettings(), changes)) pi.registerTool(tool);
+  for (const tool of createDisplayTools(() => pi.getSettings(), changes)) {
+    // Bash display is adapted at the TUI layer; leave execution to Pi or another extension.
+    if (tool.name !== "bash") pi.registerTool(tool);
+  }
   const activity = new ActivityProjection();
   let outcome: ChangeOutcome = "completed";
   let releaseUI: (() => void) | undefined;

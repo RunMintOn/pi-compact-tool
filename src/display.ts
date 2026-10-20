@@ -26,6 +26,10 @@ type Result = Parameters<NonNullable<ToolDefinition<any>["renderResult"]>>[0];
 function record(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" ? value as Record<string, unknown> : {};
 }
+function backgrounded(kind: DisplayKind, result: Result): boolean {
+  const details = record(result.details);
+  return kind === "bash" && details.status === "running" && typeof details.task_id === "string";
+}
 function path(args: Record<string, unknown>): string {
   return String(args.file_path ?? args.path ?? "");
 }
@@ -131,6 +135,7 @@ function resultComponent(adapter: DisplayAdapter, kind: DisplayKind, result: Res
   if (partial) {
     return new SummaryLine(theme.fg("warning", firstLine(rawOutput) || "running…"));
   }
+  if (backgrounded(kind, result)) return new SummaryLine(theme.fg("warning", "Backgrounded"));
   if (kind === "bash" && getDisplayStyle() === "tidy") {
     const more = Math.max(0, lineCount(rawOutput) - 1);
     const suffix = [more ? `… (${plural(more, "more line")})` : "", hint.suffix].filter(Boolean).join("");
@@ -181,6 +186,7 @@ function aggregateSummary(adapter: DisplayAdapter, kind: DisplayKind, result: Re
   const output = textOutput(result);
   const hint = truncation(result);
   const suffix = hint.suffix ? " · truncated" : "";
+  if (!partial && backgrounded(kind, result)) return "Backgrounded";
   if (kind === "bash") return `${plural(output === "(no output)" ? 0 : lineCount(output), "line")}${partial ? " · running" : ""}${suffix}`;
   if (context.isError) return "";
   if (partial) return "running…";
