@@ -12,7 +12,16 @@ stage = sys.argv[2]
 # Notifications/editor may quote commands; inspect only the replay transcript.
 final = next(row for row, text in rows.items() if "DISPLAY FINAL ANSWER" in text)
 screen = "\n".join(text for row, text in sorted(rows.items()) if row <= final)
-assert sum("tokens ↑" in text for text in rows.values()) == 1, rows
+stats = [text for text in rows.values() if "tokens ↑" in text]
+assert len(stats) == 2, rows
+tool_stats = next(text for text in stats if "cache 72.7%" in text)
+assert "26.0 tok/s" in tool_stats and "TPS" not in tool_stats, tool_stats
+assert re.search(r"\d{2}-\d{2} \d{2}:\d{2}:\d{2}\s*$", tool_stats), tool_stats
+assert not re.search(r"\d{4}-\d{2}-\d{2}", tool_stats), tool_stats
+pure = next(row for row, text in rows.items() if "DISPLAY PURE ANSWER" in text)
+pure_stats = next(text for row, text in sorted(rows.items()) if row > pure and text.strip())
+assert "tokens ↑" in pure_stats and "cache 0%" in pure_stats, pure_stats
+assert sum("turns" in text for text in rows.values()) == 1, rows
 assert "codemode" in screen, screen
 assert ("Thinking..." in screen) == (stage != "hidden"), screen
 assert ("SCRIPT BODY" in screen) == (stage == "expanded"), screen

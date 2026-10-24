@@ -370,7 +370,7 @@ function duration(ms: number): string {
 function clock(ms: number): string {
   const date = new Date(ms);
   const pad = (n: number) => String(n).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+  return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 export function renderActivitySummary(summary: ActivitySummary, theme: Theme, width: number, outputPad = 1): string[] {
   if (width < 1) return [];
@@ -381,19 +381,23 @@ export function renderActivitySummary(summary: ActivitySummary, theme: Theme, wi
     const tools = summary.toolMs !== undefined ? ` (tools ${duration(summary.toolMs)})` : "";
     parts.push(`total ${duration(summary.end - summary.start)}${tools}`);
   }
-  if (summary.tps !== undefined) parts.push(`TPS ${summary.tps.toFixed(1)} tok/s`);
+  if (summary.tps !== undefined) parts.push(`${summary.tps.toFixed(1)} tok/s`);
   if (summary.cost !== undefined) parts.push(`$${summary.cost.toFixed(3)}`);
   if (summary.hasUsage !== false) parts.push(`tokens ↑${tokens(summary.usage.input)} ↓${tokens(summary.usage.output)}`);
-  if (summary.usage.cacheRead) parts.push(`cache read ${tokens(summary.usage.cacheRead)}`);
-  if (summary.usage.cacheWrite) parts.push(`cache write ${tokens(summary.usage.cacheWrite)}`);
+  // Pi normalizes uncached input, cache reads and cache writes as disjoint counts.
+  const inputTokens = summary.usage.input + summary.usage.cacheRead + summary.usage.cacheWrite;
+  if (summary.hasUsage !== false && inputTokens > 0) {
+    parts.push(`cache ${Number((summary.usage.cacheRead / inputTokens * 100).toFixed(1))}%`);
+  }
   const date = summary.end !== undefined ? theme.fg("muted", `· ${clock(summary.end)}`) : "";
   const contentWidth = Math.max(1, width - outputPad * 2);
-  const stats = new SummaryLine(theme.fg("muted", parts.join(" · ")), date).render(contentWidth)[0] ?? "";
   const change = summary.changes;
   const label = change?.url && contentWidth < 12 ? "Changes" : change?.label ?? "";
   const suffix = change?.url ? " " + hyperlink(`\x1b[4m${theme.fg("accent", label)}\x1b[24m`, change.url) : theme.fg("muted", label);
+  const statsSuffix = date + (!summary.calls && label ? " " + suffix.trimStart() : "");
+  const stats = new SummaryLine(theme.fg("muted", parts.join(" · ")), statsSuffix).render(contentWidth)[0] ?? "";
   const first = new SummaryLine(heading, suffix).render(contentWidth)[0] ?? "";
-  return ["", ...[first, stats].map(text => truncateToWidth(" ".repeat(outputPad) + truncateToWidth(text, contentWidth, "…"), width, "…"))];
+  return ["", ...(summary.calls ? [first, stats] : [stats]).map(text => truncateToWidth(" ".repeat(outputPad) + truncateToWidth(text, contentWidth, "…"), width, "…"))];
 }
 
 const sharedKey = Symbol.for("pi-compact-tool.activity-ui.v1");

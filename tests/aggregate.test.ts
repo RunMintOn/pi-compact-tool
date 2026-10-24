@@ -86,8 +86,72 @@ test("old answer-only history without usage does not invent token or cost data",
     { type: "message", message: final },
   ]);
   const rendered = plain(renderActivitySummary(p.summaryFor(final)!, colorTheme, 120));
-  assert.match(rendered, /1 turns/);
-  assert.doesNotMatch(rendered, /tokens|cache|\$|TPS|calls|tools /);
+  assert.match(rendered, /total 1s/);
+  assert.doesNotMatch(rendered, /tokens|cache|\$|tok\/s|calls|turns|tools /);
+});
+
+test("cache hit rate weights task inputs, includes writes only in the denominator and survives replay", () => {
+  const p = new ActivityProjection();
+  const user = { role: "user", timestamp: 1000 };
+  const first = { ...assistant([call("cache-read")], 1100), usage: {
+    ...usage, input: 100, output: 500000, cacheRead: 800, cacheWrite: 100,
+  } };
+  const final = { ...assistant([{ type: "text", text: "done" }], 2000, "stop"), usage: {
+    ...usage, input: 100, output: 500000, cacheRead: 0, cacheWrite: 0,
+  } };
+  for (const message of [user, first, final]) p.ingest(message);
+  p.settled(2000);
+  const summary = p.summaryFor(final)!;
+  const rendered = plain(renderActivitySummary(summary, colorTheme, 200));
+  // 800 / (100 + 800 + 100 + 100), not the unweighted mean of 80% and 0%.
+  assert.match(rendered, /cache 72\.7%/);
+  assert.doesNotMatch(rendered, /cache read|cache write/);
+  const restored = new ActivityProjection();
+  restored.rebuild([
+    ...[user, first, final].map(message => ({ type: "message", message })),
+    { type: "custom", customType: ACTIVITY_ENTRY, data: p.timingRecord() },
+  ]);
+  assert.equal(plain(renderActivitySummary(restored.summaryFor(final)!, colorTheme, 200)), rendered);
+});
+
+test("cache rate distinguishes zero hits, all hits and unavailable input usage", () => {
+  for (const [input, cacheRead, cacheWrite, expected] of [
+    [100, 0, 0, "cache 0%"],
+    [0, 100, 0, "cache 100%"],
+    [0, 0, 100, "cache 0%"],
+    [0, 0, 0, undefined],
+  ] as const) {
+    const p = new ActivityProjection();
+    const final = { ...assistant([{ type: "text", text: "done" }], 2000, "stop"),
+      usage: { ...usage, input, cacheRead, cacheWrite } };
+    p.ingest(final);
+    const rendered = plain(renderActivitySummary(p.summaryFor(final)!, colorTheme, 200));
+    if (expected) assert.ok(rendered.includes(expected), rendered);
+    else assert.doesNotMatch(rendered, /cache/);
+  }
+});
+
+test("answer-only statistics use one content row with a compact date and unlabelled speed", () => {
+  const p = new ActivityProjection();
+  const start = new Date(2026, 9, 14, 19, 15, 18).getTime();
+  const final = assistant([{ type: "text", text: "done" }], start + 32000, "stop");
+  p.ingest({ role: "user", timestamp: start });
+  p.ingest(final);
+  const summary = p.summaryFor(final)!;
+  summary.tps = 26;
+  const rows = renderActivitySummary(summary, colorTheme, 200);
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0], "");
+  assert.match(stripTerminalSequences(rows[1]!), /total 32s · 26\.0 tok\/s/);
+  assert.match(stripTerminalSequences(rows[1]!), /10-14 19:15:50$/);
+  assert.doesNotMatch(plain(rows), /turns|calls|TPS|2026-/);
+  summary.changes = { label: "View changes", url: "file:///tmp/changes.html" };
+  assert.match(plain(renderActivitySummary(summary, colorTheme, 200)), /View changes/);
+  summary.changes = { label: "No net changes" };
+  assert.match(plain(renderActivitySummary(summary, colorTheme, 200)), /19:15:50 No net changes/);
+  for (const width of [1, 2, 20, 60, 100]) {
+    assert.ok(renderActivitySummary(summary, colorTheme, width).every(row => visibleWidth(row) <= width));
+  }
 });
 
 test("TPS excludes tool wall time and restores the new formula on replay", () => {
@@ -108,7 +172,7 @@ test("TPS excludes tool wall time and restores the new formula on replay", () =>
   p.settled(21000);
   assert.equal(p.summaryFor(final as any)?.tps, 90);
   assert.equal(p.summaryFor(final as any)?.toolMs, 10000);
-  assert.match(plain(renderActivitySummary(p.summaryFor(final as any)!, colorTheme, 120)), /total 20s \(tools 10s\) · TPS 90\.0 tok\/s · \$0\.000 · tokens/);
+  assert.match(plain(renderActivitySummary(p.summaryFor(final as any)!, colorTheme, 120)), /total 20s \(tools 10s\) · 90\.0 tok\/s · \$0\.000 · tokens/);
   for (const width of [1, 2, 20, 60, 100]) {
     assert.ok(renderActivitySummary(p.summaryFor(final as any)!, colorTheme, width).every(row => visibleWidth(row) <= width));
   }
@@ -125,7 +189,7 @@ test("TPS excludes tool wall time and restores the new formula on replay", () =>
     { type: "message", message: assistant([call("r1")], 1100) },
     { type: "message", message: final },
   ]);
-  assert.doesNotMatch(plain(renderActivitySummary(restored.summaryFor(final as any)!, colorTheme, 120)), /TPS/);
+  assert.doesNotMatch(plain(renderActivitySummary(restored.summaryFor(final as any)!, colorTheme, 120)), /tok\/s/);
 });
 
 test("TPS skips missing starts, zero elapsed time and zero output, and resets between runs", () => {
@@ -229,7 +293,7 @@ test("old persisted TPS is not displayed under the new formula; tool intervals r
   assert.equal(p.summaryFor(final)?.toolMs, 2000);
   assert.equal(p.summaryFor(final)?.tps, undefined);
   assert.match(plain(renderActivitySummary(p.summaryFor(final)!, colorTheme, 120)), /total 4s \(tools 2s\)/);
-  assert.doesNotMatch(plain(renderActivitySummary(p.summaryFor(final)!, colorTheme, 120)), /TPS/);
+  assert.doesNotMatch(plain(renderActivitySummary(p.summaryFor(final)!, colorTheme, 120)), /tok\/s/);
 });
 
 test("live execution events override inferred multi-call grouping for sequential execution", () => {
@@ -291,7 +355,7 @@ test("aggregate summaries and tool rows fit narrow widths and reserve the date a
     assert.ok(rows.every(row => visibleWidth(row) <= width), JSON.stringify({ width, rows }));
   }
   assert.match(plain(header.render(60)), /2 lines/);
-  assert.match(plain(renderActivitySummary(summary, colorTheme, 60)), /2026-08-16 \d{2}:\d{2}:\d{2}/);
+  assert.match(plain(renderActivitySummary(summary, colorTheme, 60)), /08-16 \d{2}:\d{2}:\d{2}/);
 });
 
 test("aggregate Bash always has line count, including failure, empty output and truncation", () => {

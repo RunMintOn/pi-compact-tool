@@ -151,8 +151,8 @@ test("pure replies and stopped/error tasks settle independently and survive relo
       await emit({ type: "agent_end", messages: [final] });
       await emit({ type: "agent_settled", aborted: reason === "aborted" });
       const rendered = plain(component);
-      assert.match(rendered, /1 turns/);
-      assert.match(rendered, /total 2s · TPS 10\.0 tok\/s · \$0\.200 · tokens ↑100 ↓20/);
+      assert.doesNotMatch(rendered, /turns/);
+      assert.match(rendered, /total 2s · 10\.0 tok\/s · \$0\.200 · tokens ↑100 ↓20/);
       assert.doesNotMatch(rendered, /calls|tools |read ×/);
       assert.equal((rendered.match(/tokens/g) ?? []).length, 1);
     }
@@ -273,13 +273,13 @@ test("actual prompt queue settles steering and follow-up together, then starts a
     assert.doesNotMatch(plain(components[0]!), /tokens/);
     assert.doesNotMatch(plain(components[1]!), /tokens/);
     const final = plain(components[2]!);
-    assert.match(final, /3 turns/);
+    assert.doesNotMatch(final, /turns/);
     assert.match(final, /\$0\.300 · tokens ↑300 ↓60/);
     await session.reload();
     assert.equal(plain(components[2]!), final);
     await session.prompt("a new independent task");
     assert.equal(settledCount, 2);
-    assert.match(plain(components[3]!), /1 turns/);
+    assert.doesNotMatch(plain(components[3]!), /turns/);
     assert.match(plain(components[3]!), /\$0\.100 · tokens ↑100 ↓20/);
     assert.equal(plain(components[2]!), final);
   } finally {
