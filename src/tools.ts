@@ -7,6 +7,7 @@ import { constants } from "node:fs";
 import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { decorateTool, type DisplayKind } from "./display.ts";
 import type { ChangeTracker } from "./changes.ts";
+import { getDisplayStyle } from "./state.ts";
 
 type Settings = ReturnType<ExtensionAPI["getSettings"]>;
 const kinds = { read: "read", bash: "bash", edit: "edit", write: "write", grep: "search", find: "search", ls: "search" } as const satisfies Record<string, DisplayKind>;
@@ -15,7 +16,7 @@ type BuiltInName = keyof typeof kinds;
 function official(name: BuiltInName, cwd: string, settings: Settings, changes?: ChangeTracker): ToolDefinition<any, any, any> {
   const trackedWrite = async (path: string, content: string) => {
     // The official tool has already resolved the path and holds its mutation queue.
-    await changes!.captureBefore(path);
+    if (getDisplayStyle() !== "off") await changes!.captureBefore(path);
     await writeFile(path, content, "utf8");
   };
   const factories = {
@@ -37,11 +38,11 @@ function official(name: BuiltInName, cwd: string, settings: Settings, changes?: 
   return factories[name]() as ToolDefinition<any, any, any>;
 }
 
-export function createDisplayTools(getSettings: () => Settings, changes?: ChangeTracker): ToolDefinition<any>[] {
+export function createDisplayTools(getSettings: () => Settings, changes?: ChangeTracker, compactRendering = true): ToolDefinition<any>[] {
   const cache = new Map<string, ToolDefinition<any>>();
   return (Object.keys(kinds) as BuiltInName[]).map((name) => {
     const base = official(name, process.cwd(), {});
-    return decorateTool({
+    const tool: ToolDefinition<any> = {
       ...base,
       // Registering a display override must not enable a previously inactive built-in.
       defaultActive: false,
@@ -55,6 +56,7 @@ export function createDisplayTools(getSettings: () => Settings, changes?: Change
         }
         return definition.execute(toolCallId, params, signal, onUpdate, ctx);
       },
-    }, { kind: kinds[name] });
+    };
+    return compactRendering ? decorateTool(tool, { kind: kinds[name] }) : tool;
   });
 }

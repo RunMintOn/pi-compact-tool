@@ -97,7 +97,25 @@ test("actual Pi session loads the extension, retains active tools and switches e
       const record = session.sessionManager.getBranch().find(entry => entry.type === "custom" && entry.customType === "compact-tool.activity.v1");
       assert.equal((record as any)?.data.tps, 90);
       assert.equal((record as any)?.data.tpsBasis, "excluding-tools");
+      await session.prompt("/tool-style off");
+      assert.doesNotMatch(new AssistantMessageComponent(final as any, true).render(120).map(stripTerminalSequences).join("\n"), /tok\/s/);
+      assert.match(fffRow.render(100).join("\n"), /original search fixture/);
+      assert.match(row.render(100).join("\n"), /three/);
+      await session.prompt("/tool-style aggregate");
+      assert.match(fffRow.render(100).join("\n"), /2 matches/);
     } finally { clock.mock.restore(); }
+    await session.prompt("/tool-style off");
+    for (let reload = 0; reload < 2; reload++) {
+      await session.reload();
+      assert.equal(getDisplayStyle(), "off");
+      assert.deepEqual(session.getActiveToolNames().sort(), ["bash", "edit", "read", "write"]);
+      const nativeSearch = new ToolExecutionComponent("ffgrep", `off-reload-${reload}`, { pattern: "needle" }, {}, session.getToolDefinition("ffgrep")!, { requestRender() {} } as any, cwd);
+      nativeSearch.updateResult({ content: [{ type: "text", text: "native result" }], details: { totalMatched: 2 }, isError: false });
+      assert.match(nativeSearch.render(100).join("\n"), /original search fixture/);
+      assert.doesNotMatch(nativeSearch.render(100).join("\n"), /2 matches/);
+      assert.doesNotMatch(new AssistantMessageComponent(final as any, true).render(120).map(stripTerminalSequences).join("\n"), /tok\/s/);
+    }
+    await session.prompt("/tool-style aggregate");
     await session.reload();
     assert.deepEqual(session.getActiveToolNames().sort(), ["bash", "edit", "read", "write"]);
     assert.equal(getDisplayStyle(), "aggregate");

@@ -17,6 +17,11 @@ export interface DisplayAdapter {
   target?: (args: Record<string, unknown>) => string;
   summary?: (result: Parameters<NonNullable<ToolDefinition<any>["renderResult"]>>[0]) => string;
 }
+const decorationKey = Symbol.for("pi-compact-tool.decorations.v1");
+type Decoration = { original: ToolDefinition<any, any, any>; adapter: DisplayAdapter };
+const decorations = (globalThis as typeof globalThis & { [decorationKey]?: WeakMap<object, Decoration> })[decorationKey]
+  ??= new WeakMap<object, Decoration>();
+export function getToolDecoration(tool: object): Decoration | undefined { return decorations.get(tool); }
 const builtInKinds: Record<string, DisplayKind> = {
   bash: "bash", read: "read", grep: "search", find: "search", ls: "search", edit: "edit", write: "write",
 };
@@ -206,7 +211,7 @@ export function decorateTool<TParams extends TSchema, TDetails, TState>(
   tool: ToolDefinition<TParams, TDetails, TState>, adapter: DisplayAdapter = {},
 ): ToolDefinition<TParams, TDetails, TState> {
   const kind = adapter.kind ?? builtInKinds[tool.name] ?? "generic";
-  return {
+  const decorated: ToolDefinition<TParams, TDetails, TState> = {
     ...tool,
     renderShell: "self",
     renderCall(args, theme, context) {
@@ -249,4 +254,15 @@ export function decorateTool<TParams extends TSchema, TDetails, TState>(
       return new Container();
     },
   };
+  let renderCall = decorated.renderCall;
+  let renderResult = decorated.renderResult;
+  Object.defineProperties(decorated, {
+    renderShell: { enumerable: true, get: () => getDisplayStyle() === "off" ? tool.renderShell : "self" },
+    renderCall: { enumerable: true, get: () => getDisplayStyle() === "off" ? tool.renderCall : renderCall, set: (value) => { renderCall = value; } },
+    renderResult: { enumerable: true, get: () => getDisplayStyle() === "off" ? tool.renderResult : renderResult, set: (value) => { renderResult = value; } },
+  });
+  const decoration = { original: tool, adapter };
+  decorations.set(decorated, decoration);
+  decorations.set(tool, decoration);
+  return decorated;
 }

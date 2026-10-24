@@ -2,7 +2,7 @@ import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 
 export type DisplayContext = Parameters<NonNullable<ToolDefinition<any, any, any>["renderCall"]>>[2];
 
-export type DisplayStyle = "aggregate" | "tidy" | "claude";
+export type DisplayStyle = "aggregate" | "tidy" | "claude" | "off";
 export type CodemodeView = "compact" | "calls";
 export const toolColorNames = ["green", "blue", "cyan", "purple", "amber", "orange", "pink", "gray"] as const;
 export type ToolColor = typeof toolColorNames[number];

@@ -14,7 +14,7 @@ const session = JSON.parse(seed.stdout);
 const resultsDir = mkdtempSync(join(tmpdir(), "pi-compact-display-results-"));
 writeFileSync(join(resultsDir, "session.json"), JSON.stringify(session, null, 2) + "\n");
 const log = join(resultsDir, "fullscreen.ansi.log");
-const result = spawnSync("expect", [join(root, "scripts/display-preferences-smoke.exp"), session.cwd, session.agentDir, session.session, join(root, "index.ts"), log], { cwd: root, stdio: "inherit" });
+const result = spawnSync("expect", [join(root, "scripts/display-preferences-smoke.exp"), session.cwd, session.agentDir, session.session, join(root, "index.ts"), log, ...process.argv.slice(2)], { cwd: root, stdio: "inherit" });
 console.log(`Display TUI results: ${resultsDir}`);
 if (result.error) throw result.error;
 process.exitCode = result.status ?? 1;

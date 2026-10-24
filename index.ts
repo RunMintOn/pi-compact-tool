@@ -7,11 +7,14 @@ import { createDisplayTools } from "./src/tools.ts";
 import { getDisplayPreferences, getDisplayStyle, getToolColor, refreshDisplayRows, resetDisplayState, setDisplayPreferences, setDisplayStyle, defaultPreferences, toolColorNames, type ToolColor, type DisplayPreferences, type DisplayStyle } from "./src/state.ts";
 import { loadPreferences, savePreferences } from "./src/preferences.ts";
 
-const styles: DisplayStyle[] = ["aggregate", "tidy", "claude"];
-const labels: Record<DisplayStyle, string> = { aggregate: "聚合风格（aggregate）", tidy: "项目一风格（tidy）", claude: "项目三风格（claude）" };
+const styles: DisplayStyle[] = ["aggregate", "tidy", "claude", "off"];
+const labels: Record<DisplayStyle, string> = { aggregate: "聚合风格（aggregate）", tidy: "项目一风格（tidy）", claude: "项目三风格（claude）", off: "原生展示（off）" };
+// Reload replaces extension modules but keeps the Pi process and its globals.
+const selectionKey = Symbol.for("pi-compact-tool.style-selection.v1");
+const selection = (globalThis as typeof globalThis & { [selectionKey]?: { style?: DisplayStyle } })[selectionKey] ??= {};
 export default function compactToolExtension(pi: ExtensionAPI): void {
   const changes = new ChangeTracker();
-  for (const tool of createDisplayTools(() => pi.getSettings(), changes)) {
+  for (const tool of createDisplayTools(() => pi.getSettings(), changes, false)) {
     // Bash display is adapted at the TUI layer; leave execution to Pi or another extension.
     if (tool.name !== "bash") pi.registerTool(tool);
   }
@@ -20,7 +23,20 @@ export default function compactToolExtension(pi: ExtensionAPI): void {
   let releaseUI: (() => void) | undefined;
   let persistedFinal: string | undefined;
   const interactive = (ctx: ExtensionContext) => ctx.hasUI && ctx.mode === "tui";
+  const enabled = (ctx: ExtensionContext) => interactive(ctx) && getDisplayStyle() !== "off";
+  const installUI = (ctx: ExtensionContext) => {
+    const theme = ctx.ui.theme;
+    const outputPad = pi.getSettings().outputPad === 0 ? 0 : 1;
+    releaseUI = installActivityUI(activity, () => theme, () => outputPad);
+  };
   const preferencesPath = join(getAgentDir(), "extension-data", "pi-compact-tool", "preferences.json");
+  const loadSavedPreferences = async (ctx: ExtensionContext) => {
+    try {
+      setDisplayPreferences(await loadPreferences(preferencesPath));
+    } catch (error) {
+      ctx.ui.notify(`无法读取展示偏好，使用默认值：${error instanceof Error ? error.message : String(error)}`, "warning");
+    }
+  };
   const updatePreferences = async (patch: Partial<DisplayPreferences>, label: string, ctx: ExtensionContext) => {
     try {
       setDisplayPreferences(await savePreferences(preferencesPath, patch));
@@ -30,18 +46,18 @@ export default function compactToolExtension(pi: ExtensionAPI): void {
     }
   };
   const rebuild = (ctx: ExtensionContext) => {
-    if (!interactive(ctx)) return;
+    if (!enabled(ctx)) return;
     activity.rebuild(ctx.sessionManager.buildContextEntries());
     refreshDisplayRows();
   };
 
   pi.registerFlag("compact-style", {
-    description: "Initial tool display style: aggregate, tidy or claude",
+    description: "Initial tool display style: aggregate, tidy, claude or off",
     type: "string",
     default: "aggregate",
   });
   pi.registerCommand("tool-style", {
-    description: "Switch aggregate, tidy and Claude-style tool display",
+    description: "Switch aggregate, tidy, Claude-style or native (off) tool display",
     getArgumentCompletions(prefix) {
       return styles.filter(style => style.startsWith(prefix)).map(style => ({ value: style, label: style }));
     },
@@ -49,11 +65,23 @@ export default function compactToolExtension(pi: ExtensionAPI): void {
       if (!interactive(ctx)) return;
       const value = args.trim();
       if (value && !styles.includes(value as DisplayStyle)) {
-        ctx.ui.notify("使用 /tool-style aggregate、/tool-style tidy 或 /tool-style claude", "error");
+        ctx.ui.notify("使用 /tool-style aggregate、tidy、claude 或 off", "error");
         return;
       }
       const style = value as DisplayStyle || styles[(styles.indexOf(getDisplayStyle()) + 1) % styles.length]!;
+      if (style === "off") {
+        releaseUI?.(); releaseUI = undefined;
+        changes.reset(); activity.clearChanges(); activity.rebuild([]);
+        persistedFinal = undefined; outcome = "completed";
+      }
+      const wasOff = getDisplayStyle() === "off";
+      selection.style = style;
       setDisplayStyle(style);
+      if (wasOff && style !== "off") {
+        await loadSavedPreferences(ctx);
+        rebuild(ctx);
+        installUI(ctx);
+      }
       ctx.ui.notify(`工具展示：${labels[style]}`, "info");
     },
   });
@@ -119,6 +147,10 @@ export default function compactToolExtension(pi: ExtensionAPI): void {
     description: "Open the latest Edit / Write net changes in your browser",
     async handler(_args, ctx) {
       if (!interactive(ctx)) return;
+      if (!enabled(ctx)) {
+        ctx.ui.notify("off 模式不记录修改报告。使用 /tool-style aggregate 重新启用。", "info");
+        return;
+      }
       await ctx.waitForIdle();
       const path = changes.latestPage;
       if (!path) {
@@ -140,37 +172,30 @@ export default function compactToolExtension(pi: ExtensionAPI): void {
     releaseUI?.(); releaseUI = undefined; persistedFinal = undefined;
     changes.reset(); activity.clearChanges(); outcome = "completed";
     const flag = pi.getFlag("compact-style");
-    resetDisplayState(styles.includes(flag as DisplayStyle) ? flag as DisplayStyle : "aggregate");
-    if (!interactive(ctx)) return;
-    try {
-      setDisplayPreferences(await loadPreferences(preferencesPath));
-    } catch (error) {
-      ctx.ui.notify(`无法读取展示偏好，使用默认值：${error instanceof Error ? error.message : String(error)}`, "warning");
-    }
+    resetDisplayState(selection.style ?? (styles.includes(flag as DisplayStyle) ? flag as DisplayStyle : "aggregate"));
+    if (!enabled(ctx)) return;
+    await loadSavedPreferences(ctx);
     rebuild(ctx);
-    // Render callbacks can outlive this session's extension context.
-    const theme = ctx.ui.theme;
-    const outputPad = pi.getSettings().outputPad === 0 ? 0 : 1;
-    releaseUI = installActivityUI(activity, () => theme, () => outputPad);
-    if (!styles.includes(flag as DisplayStyle)) ctx.ui.notify("compact-style 只支持 aggregate、tidy 或 claude，已使用 aggregate。", "warning");
+    installUI(ctx);
+    if (!styles.includes(flag as DisplayStyle)) ctx.ui.notify("compact-style 只支持 aggregate、tidy、claude 或 off，已使用 aggregate。", "warning");
   });
   pi.on("agent_start", (_event, ctx) => {
-    if (!interactive(ctx)) return;
+    if (!enabled(ctx)) return;
     changes.start(ctx.cwd, Date.now());
     activity.agentStarted(Date.now());
   });
   pi.on("agent_before_settle", (event, ctx) => {
-    if (interactive(ctx)) outcome = event.outcome;
+    if (enabled(ctx)) outcome = event.outcome;
   });
   pi.on("agent_end", (event, ctx) => {
-    if (!interactive(ctx)) return;
+    if (!enabled(ctx)) return;
     activity.agentEnded(event.messages, Date.now());
   });
   pi.on("message_update", (event, ctx) => {
-    if (interactive(ctx)) activity.streamUpdated(event.message, event.assistantMessageEvent);
+    if (enabled(ctx)) activity.streamUpdated(event.message, event.assistantMessageEvent);
   });
   pi.on("message_end", (event, ctx) => {
-    if (!interactive(ctx)) return;
+    if (!enabled(ctx)) return;
     activity.ingest(event.message);
     if (event.message.role === "user") {
       changes.start(ctx.cwd, event.message.timestamp ?? Date.now());
@@ -179,15 +204,15 @@ export default function compactToolExtension(pi: ExtensionAPI): void {
     if (event.message.role === "assistant") activity.completed(event.message, Date.now());
   });
   pi.on("tool_execution_start", (event, ctx) => {
-    if (!interactive(ctx) || event.parentToolCallId) return;
+    if (!enabled(ctx) || event.parentToolCallId) return;
     activity.started(event.toolCallId, Date.now());
   });
   pi.on("tool_execution_end", (event, ctx) => {
-    if (!interactive(ctx) || event.parentToolCallId) return;
+    if (!enabled(ctx) || event.parentToolCallId) return;
     activity.ended(event.toolCallId, Date.now(), event.toolName === "bash" ? event.result : undefined);
   });
   pi.on("agent_settled", async (_event, ctx) => {
-    if (!interactive(ctx)) return;
+    if (!enabled(ctx)) return;
     activity.settled(Date.now());
     refreshDisplayRows();
     const timing = activity.timingRecord();

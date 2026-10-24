@@ -38,13 +38,17 @@ Execution delegates directly to Pi's official implementations. Schemas, prompt m
 /tool-style claude   Project Three's Claude style
 ```
 
-Existing rows refresh without changing their expansion. New sessions and reload restore the startup style; this version does not persist style choices.
+Existing rows refresh without changing their expansion. `/tool-style` choices survive reload and new sessions within the current Pi process. Restarting Pi uses `--compact-style`, or aggregate when omitted. Style choices are not written to disk.
 
 Choose the startup style:
 
 ```bash
 pi -ne -e ./index.ts --tui-mode fullscreen --compact-style tidy
 ```
+
+`/tool-style off` restores native rendering for built-in and adapted custom tools, disables thinking decoration and final statistics, and stops activity entries and Edit / Write change-report tracking. Use `--compact-style off` to start in this mode. Tool execution and activation are unchanged; extension commands remain available. Switch back with `/tool-style aggregate`, `tidy`, or `claude` without reloading. The no-argument cycle is aggregate → tidy → claude → off. Off remains selected across repeated reloads when testing other plugins.
+
+Entering off discards pending change snapshots and current report links, but does not delete generated HTML files. Re-enabling starts change tracking at subsequent Edit / Write operations; snapshots from the disabled period cannot be reconstructed.
 
 `/compact` remains Pi's context-compaction command. `Ctrl+O` remains Pi's global expansion action; per-row fullscreen clicking is this extension's main interaction. Regular terminal-scrollback mode does not provide the same mouse interaction.
 
@@ -63,7 +67,7 @@ These independent preferences affect aggregate only. Changes refresh existing ro
 
 Hidden thinking retains the currently streaming run with native content and expansion. It disappears at thinking end, before tool arguments, execution or normal text, and leaves no blank rows. Serial tools stay contiguous, with spacing only around parallel sections. Model thinking settings and transcript content are untouched; showing thinking again retains its native expansion. Normal text, errors and final statistics remain visible. Tidy/Claude thinking is unchanged.
 
-Commands automatically save to `getAgentDir()/extension-data/pi-compact-tool/preferences.json` (normally `~/.pi/agent/extension-data/pi-compact-tool/preferences.json`). Preferences are shared across projects and restored for new sessions and reload. First-use defaults are A + thinking shown. `/tool-style` remains non-persistent. A failed save reports an error without changing current preferences.
+Commands automatically save to `getAgentDir()/extension-data/pi-compact-tool/preferences.json` (normally `~/.pi/agent/extension-data/pi-compact-tool/preferences.json`). Preferences are shared across projects and restored for new sessions and reload. First-use defaults are A + thinking shown. `/tool-style` is retained only in the current Pi process, not in this file. A failed save reports an error without changing current preferences.
 
 ## Preview tool-label colors
 

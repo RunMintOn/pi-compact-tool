@@ -433,7 +433,7 @@ export function installActivityUI(projection: ActivityProjection, getTheme: () =
   function toolRender(this: ToolExecutionComponent, width: number): string[] {
     if (released) return originalToolRender.call(this, width);
     if (!adaptedTools.has(this)) {
-      const restore = adaptCustomTool(this);
+      const restore = adaptCustomTool(this, true);
       if (restore) adaptedTools.set(this, restore);
     }
     const rows = originalToolRender.call(this, width);

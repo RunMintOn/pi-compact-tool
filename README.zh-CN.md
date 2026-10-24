@@ -32,19 +32,24 @@ pi -ne -e ./index.ts --tui-mode fullscreen
 ## 风格切换
 
 ```text
-/tool-style          依次切换 aggregate → tidy → claude
+/tool-style          依次切换 aggregate → tidy → claude → off
 /tool-style aggregate 紧凑工具记录与回答末尾统计
 /tool-style tidy     项目一短摘要风格
 /tool-style claude   项目三 Claude 风格
+/tool-style off      原生展示，停用本插件的展示和记录
 ```
 
-已有工具行立即刷新，并保留每条的展开状态。新会话和 reload 回到启动风格；本版不持久化风格选择。
+已有工具行立即刷新，并保留每条的展开状态。`/tool-style` 的选择在当前 Pi 进程内保留，reload 和新会话都不会重置。退出 Pi 后重新启动，按 `--compact-style` 选择风格；未指定时默认 aggregate。不写入磁盘配置。
 
 指定启动风格：
 
 ```bash
 pi -ne -e ./index.ts --tui-mode fullscreen --compact-style tidy
 ```
+
+使用 `--compact-style off` 可从启动起保持原生展示。`off` 恢复已有内置工具及已适配自定义工具的原生 renderer，停止 Think 调整、末尾统计、活动记录和 Edit / Write 修改报告记录。工具执行和激活状态不变，插件命令仍可使用。通过 `/tool-style aggregate`、`tidy` 或 `claude` 可以重新启用，无需 reload。测试其他插件时，执行 `/tool-style off` 后可以反复 reload，仍保持停用。
+
+切入 `off` 会丢弃尚未生成的修改报告快照和当前报告链接，不删除已生成的 HTML。重新启用后，从后续 Edit / Write 开始记录修改，无法补回停用期间的起点快照。
 
 `/compact` 是 Pi 的上下文压缩命令，本项目不占用它。`Ctrl+O` 仍是 Pi 的全局展开操作，本项目的主要交互是 fullscreen 单条点击。普通终端滚动模式不提供同样的点击交互。
 
@@ -63,7 +68,7 @@ pi -ne -e ./index.ts --tui-mode fullscreen --compact-style tidy
 
 隐藏 thinking 不修改模型思考设置或消息内容。当前正在生成的一段仍使用原生内容和展开交互；思考结束时立即隐藏，工具参数生成、执行、正文输出和停止阶段不保留旧 thinking，也不留下空行。串行工具连续排列；parallel 组保留分组间距。重新显示时保留 thinking 原有展开状态，普通正文、错误及最终统计不受影响。tidy / claude 保持原生 thinking 展示。
 
-命令自动保存到 `getAgentDir()/extension-data/pi-compact-tool/preferences.json`，通常为 `~/.pi/agent/extension-data/pi-compact-tool/preferences.json`。所有项目共用，跨新会话和 reload 恢复；首次默认 A + thinking 显示。`/tool-style` 仍不持久化。保存失败时报告错误，不改变当前偏好。
+命令自动保存到 `getAgentDir()/extension-data/pi-compact-tool/preferences.json`，通常为 `~/.pi/agent/extension-data/pi-compact-tool/preferences.json`。所有项目共用，跨新会话和 reload 恢复；首次默认 A + thinking 显示。`/tool-style` 仅在当前 Pi 进程内保留，不保存到此文件。保存失败时报告错误，不改变当前偏好。
 
 ## 快速试工具名颜色
 

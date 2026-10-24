@@ -1,6 +1,6 @@
 import type { Theme, ToolDefinition, ToolExecutionComponent } from "@earendil-works/pi-coding-agent";
 import { type Component, truncateToWidth } from "@earendil-works/pi-tui";
-import { decorateTool, type DisplayAdapter } from "./display.ts";
+import { decorateTool, getToolDecoration, type DisplayAdapter } from "./display.ts";
 import { transcriptPadding } from "./activity.ts";
 import { firstLine, lineCount, panelLine, plural, textOutput } from "./render-utils.ts";
 import { getDisplayPreferences, getDisplayStyle } from "./state.ts";
@@ -77,19 +77,22 @@ function nativePanel(component: Component, theme: Theme, pending: boolean, calls
 }
 
 /** Replace only a TUI component's definition, never the registered/executing tool. */
-export function adaptCustomTool(component: ToolExecutionComponent): (() => void) | undefined {
+export function adaptCustomTool(component: ToolExecutionComponent, includeBuiltIns = false): (() => void) | undefined {
   type Native = {
     toolName: string;
     toolDefinition?: ToolDefinition<any>;
     children: Component[];
     selfRenderContainer: Component;
+    contentBox: Component;
     callRendererComponent?: Component;
     resultRendererComponent?: Component;
     rendererState: Record<string, unknown>;
   };
   const native = component as unknown as Native;
-  const displayAdapter = adapter(native.toolName);
-  const original = native.toolDefinition;
+  const decoration = native.toolDefinition && getToolDecoration(native.toolDefinition);
+  const displayAdapter = decoration?.adapter ?? adapter(native.toolName) ??
+    (includeBuiltIns && ["read", "bash", "edit", "write", "grep", "find", "ls"].includes(native.toolName) ? {} : undefined);
+  const original = decoration?.original ?? native.toolDefinition;
   if (!displayAdapter || !original) return undefined;
   const decorated = decorateTool({ ...original, name: native.toolName }, displayAdapter);
   if (native.toolName === "apply_patch" && original.renderResult) {
@@ -122,7 +125,9 @@ export function adaptCustomTool(component: ToolExecutionComponent): (() => void)
       return compact;
     };
   }
-  const framing = native.children[1]!;
+  const framing = decoration
+    ? original.renderShell === "self" ? native.selfRenderContainer : native.contentBox
+    : native.children[1]!;
   function refresh() {
     native.callRendererComponent = undefined;
     native.resultRendererComponent = undefined;
