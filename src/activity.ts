@@ -405,6 +405,7 @@ export function bashOutputLines(id: string): number | undefined { return shared[
 /** Reversible patches, installed only in an interactive session and released on reload/shutdown. */
 export function installActivityUI(projection: ActivityProjection, getTheme: () => Theme, getInitialOutputPad = () => 1): () => void {
   shared[sharedKey]?.release();
+  let released = false;
   let outputPad = getInitialOutputPad();
   const getOutputPad = () => outputPad;
   const tool = ToolExecutionComponent.prototype;
@@ -426,6 +427,7 @@ export function installActivityUI(projection: ActivityProjection, getTheme: () =
     ];
   }
   function toolRender(this: ToolExecutionComponent, width: number): string[] {
+    if (released) return originalToolRender.call(this, width);
     if (!adaptedTools.has(this)) {
       const restore = adaptCustomTool(this);
       if (restore) adaptedTools.set(this, restore);
@@ -455,12 +457,14 @@ export function installActivityUI(projection: ActivityProjection, getTheme: () =
     ];
   }
   function toolMouse(this: ToolExecutionComponent, event: TuiMouseEvent) {
+    if (released) return originalMouse.call(this, event);
     if (!compact(this)) return originalMouse.call(this, event);
     const prefixHeight = prefix((this as unknown as NativeTool).toolCallId, event.width).length;
     if (event.y < prefixHeight) return undefined;
     return originalMouse.call(this, { ...event, y: event.y - prefixHeight + 1 });
   }
   function assistantRender(this: AssistantMessageComponent, width: number): string[] {
+    if (released) return originalAssistantRender.call(this, width);
     const native = this as unknown as NativeAssistant;
     // Native messages track /settings padding changes without a session API call.
     outputPad = native.outputPad;
@@ -525,6 +529,10 @@ export function installActivityUI(projection: ActivityProjection, getTheme: () =
   tool.handleMouse = toolMouse;
   assistant.render = assistantRender;
   const installed: Installed = { projection, getOutputPad, release() {
+    if (released) return;
+    // A later extension can retain these methods inside its own wrappers.
+    // Make released wrappers inert even when ownership checks cannot detach them.
+    released = true;
     if (tool.render === toolRender) tool.render = originalToolRender;
     if (tool.handleMouse === toolMouse) tool.handleMouse = originalMouse;
     if (assistant.render === assistantRender) assistant.render = originalAssistantRender;

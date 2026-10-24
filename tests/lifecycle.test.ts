@@ -24,13 +24,13 @@ const assistant = (text: string, timestamp: number, stopReason = "stop", cost = 
 });
 const plain = (component: AssistantMessageComponent) => component.render(160).map(stripTerminalSequences).join("\n");
 
-async function fixture() {
+async function fixture(extraExtensions: string[] = []) {
   const cwd = mkdtempSync(join(tmpdir(), "compact-lifecycle-"));
   const settingsManager = SettingsManager.inMemory({});
   const resourceLoader = new DefaultResourceLoader({
     cwd, agentDir: cwd, settingsManager, noExtensions: true, noSkills: true,
     noPromptTemplates: true, noThemes: true,
-    additionalExtensionPaths: [new URL("../index.ts", import.meta.url).pathname],
+    additionalExtensionPaths: [new URL("../index.ts", import.meta.url).pathname, ...extraExtensions],
   });
   await resourceLoader.reload();
   assert.deepEqual(resourceLoader.getExtensions().errors, []);
@@ -46,6 +46,38 @@ async function fixture() {
   };
   return { session, emit };
 }
+
+test("reload with a later assistant renderer keeps one summary for historical and latest replies", async () => {
+  const originalRender = AssistantMessageComponent.prototype.render;
+  const { session, emit } = await fixture([new URL("./fixtures/assistant-wrapper.ts", import.meta.url).pathname]);
+  const messages = [assistant("historical reply", 2000), assistant("latest reply", 4000)];
+  const components: AssistantMessageComponent[] = [];
+  try {
+    for (const message of messages) {
+      await emit({ type: "message_end", message: { role: "user", content: "request", timestamp: message.timestamp - 1000 } });
+      await emit({ type: "agent_start" });
+      await emit({ type: "message_end", message });
+      await emit({ type: "agent_end", messages: [message] });
+      await emit({ type: "agent_settled", aborted: false });
+      components.push(new AssistantMessageComponent(message as any, true));
+    }
+    const expected = components.map(plain);
+    for (let reload = 0; reload < 5; reload++) {
+      await session.reload();
+      for (const [index, message] of messages.entries()) {
+        for (const component of [components[index]!, new AssistantMessageComponent(message as any, true)]) {
+          const rendered = plain(component);
+          assert.equal((rendered.match(/tokens ↑/g) ?? []).length, 1, `reload ${reload + 1}, reply ${index + 1}`);
+          assert.equal(rendered, expected[index]);
+        }
+      }
+    }
+  } finally {
+    await (session as any)._extensionRunner.emit({ type: "session_shutdown", reason: "exit" });
+    session.dispose();
+    AssistantMessageComponent.prototype.render = originalRender;
+  }
+});
 
 test("queued steering/follow-up share one settled summary, including after repeated reload", async (t) => {
   t.mock.method(Date, "now", () => 2000);
