@@ -1,3 +1,4 @@
+import { createMenuDriver } from "./helpers/menu.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { mkdtempSync } from "node:fs";
@@ -25,6 +26,7 @@ test("another extension owns bash execution while compact renders background han
   const { session } = await createAgentSession({
     cwd, resourceLoader, settingsManager, sessionManager: SessionManager.inMemory(cwd),
   });
+  const menu = createMenuDriver();
   initTheme("dark", false);
   const theme = {
     appearance: "dark", getColorMode: () => "truecolor",
@@ -33,7 +35,7 @@ test("another extension owns bash execution while compact renders background han
   } as unknown as Theme;
   try {
     await session.bindExtensions({
-      mode: "tui", uiContext: { theme, notify() {} } as unknown as ExtensionUIContext,
+      mode: "tui", uiContext: { theme, custom: menu.custom, notify() {} } as unknown as ExtensionUIContext,
     });
     const definition = session.getToolDefinition("bash")!;
     assert.equal(definition.description, "External bash execution");
@@ -49,7 +51,7 @@ test("another extension owns bash execution while compact renders background han
       {}, definition, { requestRender() {} } as any, cwd);
     row.updateResult(result);
     for (const style of ["aggregate", "tidy", "claude"]) {
-      await session.prompt(`/tool-style ${style}`);
+      await menu.change(() => session.prompt("/tools"), "style", style);
       assert.match(stripTerminalSequences(row.render(100).join("\n")), /Backgrounded/);
       row.setExpanded(true);
       assert.match(stripTerminalSequences(row.render(100).join("\n")), /Still running/);

@@ -1,3 +1,4 @@
+import { createMenuDriver } from "./helpers/menu.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { mkdtemp, readFile } from "node:fs/promises";
@@ -19,9 +20,10 @@ test("off startup and repeated live switching restore native rows and skip activ
   const tools = new Map<string, any>();
   const entries: unknown[] = [];
   const cwd = await mkdtemp(join(tmpdir(), "pi-compact-off-"));
+  const menu = createMenuDriver();
   const ctx = {
     cwd, hasUI: true, mode: "tui",
-    ui: { theme: {} as any, notify() {} },
+    ui: { theme: {} as any, notify() {}, custom: menu.custom },
     sessionManager: { buildContextEntries: () => [] },
   };
   extension({
@@ -32,6 +34,7 @@ test("off startup and repeated live switching restore native rows and skip activ
     on: (name: string, handler: Function) => handlers.set(name, handler),
     appendEntry: (...args: unknown[]) => entries.push(args),
   } as any);
+  assert.deepEqual([...commands.keys()].sort(), ["changes", "tools"]);
   const emit = async (name: string, event = {}) => handlers.get(name)!(event, ctx);
   const makeRow = (definition: any) => {
     const row = new ToolExecutionComponent("read", "off-read", { path: "sample.txt" }, {}, definition, { requestRender() {} } as any, cwd);
@@ -63,13 +66,13 @@ test("off startup and repeated live switching restore native rows and skip activ
     const cooperativeNative = makeRow(cooperativeOriginal);
     const cooperativeBaseline = cooperativeNative.render(100);
     for (const style of ["aggregate", "tidy", "claude"]) {
-      await commands.get("tool-style").handler(style, ctx);
+      await menu.change(() => commands.get("tools").handler("", ctx), "style", style);
       assert.notDeepEqual(row.render(100), collapsedNative);
       assert.notDeepEqual(cooperative.render(100), cooperativeBaseline);
       row.setExpanded(true);
       baseline.setExpanded(true);
       assert.match(row.render(100).join("\n"), /three/);
-      await commands.get("tool-style").handler("off", ctx);
+      await menu.change(() => commands.get("tools").handler("", ctx), "style", "off");
       assert.equal(ToolExecutionComponent.prototype.render, toolRender);
       assert.equal(AssistantMessageComponent.prototype.render, assistantRender);
       assert.deepEqual(row.render(100), expandedNative);
@@ -90,11 +93,11 @@ test("off startup and repeated live switching restore native rows and skip activ
     assert.equal(await readFile(join(cwd, "file.txt"), "utf8"), "unchanged execution\n");
     assert.deepEqual(entries, []);
     assert.deepEqual(answer.render(100), baselineAnswer);
-    await commands.get("tool-style").handler("", ctx);
+    await menu.change(() => commands.get("tools").handler("", ctx), "style", "aggregate");
     assert.equal(getDisplayStyle(), "aggregate");
     await emit("session_start");
     assert.equal(getDisplayStyle(), "aggregate");
-    await commands.get("tool-style").handler("off", ctx);
+    await menu.change(() => commands.get("tools").handler("", ctx), "style", "off");
     await emit("session_start");
     assert.equal(getDisplayStyle(), "off");
     assert.equal(ToolExecutionComponent.prototype.render, toolRender);

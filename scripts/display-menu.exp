@@ -1,0 +1,34 @@
+# Open a setting's picker, choose relative to its current index, and close the menu.
+proc configure_display {row current target} {
+  send -- "/tools\r"
+  expect {
+    -re {工具展示} {}
+    timeout { puts stderr "Display menu did not open"; exit 1 }
+    eof { puts stderr "Pi exited opening display menu"; exit 1 }
+  }
+  after 150
+  for {set i 0} {$i < $row} {incr i} { send -- "\033\[B"; after 150 }
+  send -- "\r"
+  after 150
+  set choices [lindex {{aggregate tidy claude off} {green blue cyan purple amber orange pink gray} {green blue cyan purple amber orange pink gray} {compact calls} {显示 隐藏}} $row]
+  set label [lindex $choices $current]
+  expect {
+    -re "→ $label" {}
+    timeout { puts stderr "Picker did not select current value: $label"; exit 1 }
+  }
+  set key [expr {$target > $current ? "\033\[B" : "\033\[A"}]
+  set steps [expr {abs($target - $current)}]
+  set direction [expr {$target > $current ? 1 : -1}]
+  for {set i 0} {$i < $steps} {incr i} {
+    send -- $key
+    set label [lindex $choices [expr {$current + ($i + 1) * $direction}]]
+    expect {
+      -re "→ $label" {}
+      timeout { puts stderr "Picker did not move to: $label"; exit 1 }
+    }
+  }
+  send -- "\r"
+  after 250
+  send -- "\033"
+  expect -timeout 1 { -re {.+} { exp_continue } timeout {} }
+}

@@ -29,16 +29,23 @@ Do not load Project One, Reference Two, or another extension that owns the same 
 
 Execution delegates directly to Pi's official implementations. Schemas, prompt metadata and official tool metadata are retained. Cancellation signals, streaming callbacks and the complete execution context are forwarded. Effective shell and image settings are honored. No `displaySummary`, additional model requests, or tool-result transformations.
 
-## Switch styles
+## Display settings
 
-```text
-/tool-style          Cycle aggregate → tidy → claude
-/tool-style aggregate Compact records and end-of-request statistics
-/tool-style tidy     Project One's compact style
-/tool-style claude   Project Three's Claude style
-```
+Use `/tools` to open the display menu. It shows current values without changing them. Use Up/Down to select a setting, Enter to open its choices, and Enter again to apply. Esc returns from choices without changing anything, or closes the main menu. Changes apply immediately and keep the menu open.
 
-Existing rows refresh without changing their expansion. `/tool-style` choices survive reload and new sessions within the current Pi process. Restarting Pi uses `--compact-style`, or aggregate when omitted. Style choices are not written to disk.
+| Setting | Choices |
+|---|---|
+| 展示风格 (style) | aggregate, tidy, claude, off |
+| Bash 颜色 | green, blue, cyan, purple, amber, orange, pink, gray |
+| Codemode 颜色 | Same colors |
+| Codemode 展示 | compact, calls |
+| 已结束的思考 | 显示 (show), 隐藏 (hide) |
+
+Outside aggregate, the other four settings remain visible with their saved values, but are disabled and marked “仅 aggregate 可用”. The menu states the persistence scope: style lasts for the current process; other preferences are saved globally.
+
+The old configuration commands (`/tool-style`, `/tool-color`, `/codemode-view`, `/tool-thinking`) have been removed without aliases. `/changes` remains independent.
+
+Existing rows refresh without changing their expansion. Style choices survive reload and new sessions within the current Pi process. Restarting Pi uses `--compact-style`, or aggregate when omitted. Style choices are not written to disk.
 
 Choose the startup style:
 
@@ -46,7 +53,7 @@ Choose the startup style:
 pi -ne -e ./index.ts --tui-mode fullscreen --compact-style tidy
 ```
 
-`/tool-style off` restores native rendering for built-in and adapted custom tools, disables thinking decoration and final statistics, and stops activity entries and Edit / Write change-report tracking. Use `--compact-style off` to start in this mode. Tool execution and activation are unchanged; extension commands remain available. Switch back with `/tool-style aggregate`, `tidy`, or `claude` without reloading. The no-argument cycle is aggregate → tidy → claude → off. Off remains selected across repeated reloads when testing other plugins.
+Selecting off in `/tools` restores native rendering for built-in and adapted custom tools, disables thinking decoration and final statistics, and stops activity entries and Edit / Write change-report tracking. Use `--compact-style off` to start in this mode. Tool execution and activation are unchanged; extension commands remain available. Select aggregate, tidy, or claude in `/tools` to re-enable without reloading. Off remains selected across repeated reloads when testing other plugins.
 
 Entering off discards pending change snapshots and current report links, but does not delete generated HTML files. Re-enabling starts change tracking at subsequent Edit / Write operations; snapshots from the disabled period cannot be reconstructed.
 
@@ -54,35 +61,21 @@ Entering off discards pending change snapshots and current report links, but doe
 
 ## Aggregate display preferences
 
-```text
-/codemode-view          Toggle A / B
-/codemode-view compact  A: one collapsed codemode row (default)
-/codemode-view calls    B: summary plus the complete native nested-call region
-/tool-thinking         Toggle thinking visibility
-/tool-thinking show    Show thinking (default, retaining native expansion)
-/tool-thinking hide    Hide finished thinking; retain only the currently streaming run
-```
+In `/tools`, **Codemode 展示** selects compact (A: one collapsed row, default) or calls (B: summary plus the complete native nested-call region). **已结束的思考** selects 显示 (show, default) or 隐藏 (hide finished thinking, keeping the currently streaming run).
 
 These independent preferences affect aggregate only. Changes refresh existing rows without changing per-tool expansion. B preserves the native expanded call region, including all calls, arguments, wrapping, status, duration, errors and costs, with live partial updates. Script and output remain hidden. Without nested calls, both modes remain single-line. Click the summary or any nested row to expand the entire codemode; collapse returns to the selected A/B mode. `Ctrl+O` retains native global expansion.
 
 Hidden thinking retains the currently streaming run with native content and expansion. It disappears at thinking end, before tool arguments, execution or normal text, and leaves no blank rows. Serial tools stay contiguous, with spacing only around parallel sections. Model thinking settings and transcript content are untouched; showing thinking again retains its native expansion. Normal text, errors and final statistics remain visible. Tidy/Claude thinking is unchanged.
 
-Commands automatically save to `getAgentDir()/extension-data/pi-compact-tool/preferences.json` (normally `~/.pi/agent/extension-data/pi-compact-tool/preferences.json`). Preferences are shared across projects and restored for new sessions and reload. First-use defaults are A + thinking shown. `/tool-style` is retained only in the current Pi process, not in this file. A failed save reports an error without changing current preferences.
+Preference changes automatically save to `getAgentDir()/extension-data/pi-compact-tool/preferences.json` (normally `~/.pi/agent/extension-data/pi-compact-tool/preferences.json`). Preferences are shared across projects and restored for new sessions and reload. First-use defaults are A + thinking shown. The selected style is retained only in the current Pi process, not in this file. A failed save reports an error without changing current preferences.
 
 ## Preview tool-label colors
 
 Aggregate codemode labels default to soft amber; Bash defaults to blue. Failure red takes precedence. Native fully expanded codemode content remains unchanged.
 
-```text
-/tool-color                  Show current colors and available options
-/tool-color bash             Cycle Bash to the next color
-/tool-color bash blue        Try blue for Bash
-/tool-color codemode amber   Use amber for codemode
-/tool-color bash reset       Restore and save Bash's blue
-/tool-color codemode reset   Restore and save codemode's amber
-```
+In `/tools`, select **Bash 颜色** or **Codemode 颜色**, then choose a color and press Enter to apply. To restore defaults, select blue for Bash or amber for codemode.
 
-Colors cycle through `green`, `blue`, `cyan`, `purple`, `amber`, `orange`, `pink`, `gray`. Existing rows refresh without changing expansion. Colors are automatically saved in the same global preferences.json and restored across projects, new sessions and reload. Saved colors take precedence over defaults; reset restores and saves the default. Older configurations without color fields use Bash blue and codemode amber while retaining existing A/B and thinking choices. Tidy/Claude are unaffected.
+Available colors are `green`, `blue`, `cyan`, `purple`, `amber`, `orange`, `pink`, `gray`. Existing rows refresh without changing expansion. Colors are automatically saved in the same global preferences.json and restored across projects, new sessions and reload. Saved colors take precedence over defaults; selecting the default color saves it again. Older configurations without color fields use Bash blue and codemode amber while retaining existing A/B and thinking choices. Tidy/Claude are unaffected.
 
 ## View task changes
 

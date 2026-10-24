@@ -6,6 +6,7 @@ if {$argc != 5} {
 }
 lassign $argv cwd agent_dir session extension log
 set row_helper [file join [file dirname [file normalize [info script]]] find-tool-row.py]
+source [file join [file dirname [file normalize [info script]]] display-menu.exp]
 match_max 1000000
 log_user 0
 log_file -a -noappend $log
@@ -45,18 +46,9 @@ expect {
   timeout { puts stderr "Click did not expand Bash output"; exit 1 }
 }
 after 500
-send -- "/tool-style tidy\r"
-expect {
-  -re {项目一风格} {}
-  timeout { puts stderr "Tidy switch did not render"; exit 1 }
-  eof { puts stderr "Pi exited before switching"; exit 1 }
-}
+configure_display 0 0 1
 after 500
-send -- "/tool-style claude\r"
-expect {
-  -re {项目三风格} {}
-  timeout { puts stderr "Claude switch did not render"; exit 1 }
-}
+configure_display 0 1 2
 expect -timeout 2 { -re {.+} { exp_continue } timeout {} }
 log_file
 set row [exec python3 $row_helper $log]
@@ -67,11 +59,7 @@ expect {
   timeout { puts stderr "Click did not collapse Bash after switching styles"; exit 1 }
 }
 after 500
-send -- "/tool-style aggregate\r"
-expect {
-  -re {聚合风格} {}
-  timeout { puts stderr "Aggregate switch did not render"; exit 1 }
-}
+configure_display 0 2 0
 expect -timeout 2 { -re {.+} { exp_continue } timeout {} }
 log_file
 set row [exec python3 $row_helper $log]

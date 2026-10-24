@@ -4,11 +4,10 @@ import { pathToFileURL } from "node:url";
 import { ChangeTracker, type ChangeOutcome } from "./src/changes.ts";
 import { ACTIVITY_ENTRY, ActivityProjection, installActivityUI } from "./src/activity.ts";
 import { createDisplayTools } from "./src/tools.ts";
-import { getDisplayPreferences, getDisplayStyle, getToolColor, refreshDisplayRows, resetDisplayState, setDisplayPreferences, setDisplayStyle, defaultPreferences, toolColorNames, type ToolColor, type DisplayPreferences, type DisplayStyle } from "./src/state.ts";
+import { getDisplayStyle, refreshDisplayRows, resetDisplayState, setDisplayPreferences, setDisplayStyle, type DisplayPreferences, type DisplayStyle } from "./src/state.ts";
 import { loadPreferences, savePreferences } from "./src/preferences.ts";
+import { displayStyles as styles, openDisplayMenu } from "./src/menu.ts";
 
-const styles: DisplayStyle[] = ["aggregate", "tidy", "claude", "off"];
-const labels: Record<DisplayStyle, string> = { aggregate: "聚合风格（aggregate）", tidy: "项目一风格（tidy）", claude: "项目三风格（claude）", off: "原生展示（off）" };
 // Reload replaces extension modules but keeps the Pi process and its globals.
 const selectionKey = Symbol.for("pi-compact-tool.style-selection.v1");
 const selection = (globalThis as typeof globalThis & { [selectionKey]?: { style?: DisplayStyle } })[selectionKey] ??= {};
@@ -37,10 +36,9 @@ export default function compactToolExtension(pi: ExtensionAPI): void {
       ctx.ui.notify(`无法读取展示偏好，使用默认值：${error instanceof Error ? error.message : String(error)}`, "warning");
     }
   };
-  const updatePreferences = async (patch: Partial<DisplayPreferences>, label: string, ctx: ExtensionContext) => {
+  const updatePreferences = async (patch: Partial<DisplayPreferences>, ctx: ExtensionContext) => {
     try {
       setDisplayPreferences(await savePreferences(preferencesPath, patch));
-      ctx.ui.notify(`${label}（已保存全局偏好，仅 aggregate 生效）`, "info");
     } catch (error) {
       ctx.ui.notify(`无法保存展示偏好：${error instanceof Error ? error.message : String(error)}`, "error");
     }
@@ -56,90 +54,26 @@ export default function compactToolExtension(pi: ExtensionAPI): void {
     type: "string",
     default: "aggregate",
   });
-  pi.registerCommand("tool-style", {
-    description: "Switch aggregate, tidy, Claude-style or native (off) tool display",
-    getArgumentCompletions(prefix) {
-      return styles.filter(style => style.startsWith(prefix)).map(style => ({ value: style, label: style }));
-    },
-    async handler(args, ctx) {
+  pi.registerCommand("tools", {
+    description: "工具展示设置：风格、颜色、Codemode 和思考显示",
+    async handler(_args, ctx) {
       if (!interactive(ctx)) return;
-      const value = args.trim();
-      if (value && !styles.includes(value as DisplayStyle)) {
-        ctx.ui.notify("使用 /tool-style aggregate、tidy、claude 或 off", "error");
-        return;
-      }
-      const style = value as DisplayStyle || styles[(styles.indexOf(getDisplayStyle()) + 1) % styles.length]!;
-      if (style === "off") {
-        releaseUI?.(); releaseUI = undefined;
-        changes.reset(); activity.clearChanges(); activity.rebuild([]);
-        persistedFinal = undefined; outcome = "completed";
-      }
-      const wasOff = getDisplayStyle() === "off";
-      selection.style = style;
-      setDisplayStyle(style);
-      if (wasOff && style !== "off") {
-        await loadSavedPreferences(ctx);
-        rebuild(ctx);
-        installUI(ctx);
-      }
-      ctx.ui.notify(`工具展示：${labels[style]}`, "info");
-    },
-  });
-
-  pi.registerCommand("tool-color", {
-    description: "Set global aggregate bash/codemode label colors; omit color to cycle",
-    getArgumentCompletions(prefix) {
-      const choices = ["bash", "codemode"].flatMap(tool => [tool, ...[...toolColorNames, "reset"].map(color => `${tool} ${color}`)]);
-      return choices.filter(value => value.startsWith(prefix)).map(value => ({ value, label: value }));
-    },
-    async handler(args, ctx) {
-      if (!interactive(ctx)) return;
-      const values = args.trim().split(/\s+/);
-      const [tool, requested] = values;
-      const usage = `使用 /tool-color bash|codemode [${toolColorNames.join("|")}|reset]；省略颜色依次切换，自动保存全局偏好，仅 aggregate 生效。`;
-      if (!args.trim()) {
-        ctx.ui.notify(`工具名颜色：codemode=${getToolColor("codemode")}，bash=${getToolColor("bash")}。${usage}`, "info");
-        return;
-      }
-      if ((tool !== "bash" && tool !== "codemode") || values.length > 2 || (requested && requested !== "reset" && !toolColorNames.includes(requested as ToolColor))) {
-        ctx.ui.notify(usage, "error");
-        return;
-      }
-      const color = (requested as ToolColor | "reset" | undefined) ?? toolColorNames[(toolColorNames.indexOf(getToolColor(tool)) + 1) % toolColorNames.length]!;
-      const selected = color === "reset" ? defaultPreferences[`${tool}Color`] : color;
-      await updatePreferences({ [`${tool}Color`]: selected }, `${tool} 工具名颜色：${selected}`, ctx);
-    },
-  });
-
-  pi.registerCommand("codemode-view", {
-    description: "Switch aggregate codemode preview: compact or native calls",
-    getArgumentCompletions(prefix) {
-      return ["compact", "calls"].filter(value => value.startsWith(prefix)).map(value => ({ value, label: value }));
-    },
-    async handler(args, ctx) {
-      if (!interactive(ctx)) return;
-      const value = args.trim() || (getDisplayPreferences().codemodeView === "compact" ? "calls" : "compact");
-      if (value !== "compact" && value !== "calls") {
-        ctx.ui.notify("使用 /codemode-view compact 或 /codemode-view calls", "error");
-        return;
-      }
-      await updatePreferences({ codemodeView: value }, `codemode 展示：${value}`, ctx);
-    },
-  });
-
-  pi.registerCommand("tool-thinking", {
-    description: "Show all thinking or hide finished thinking in aggregate display",
-    getArgumentCompletions(prefix) {
-      return ["show", "hide"].filter(value => value.startsWith(prefix)).map(value => ({ value, label: value }));
-    },
-    async handler(args, ctx) {
-      if (!interactive(ctx)) return;
-      const value = args.trim() || (getDisplayPreferences().showThinking ? "hide" : "show");
-      if (value !== "show" && value !== "hide") {
-        ctx.ui.notify("使用 /tool-thinking show 或 /tool-thinking hide", "error");
-        return;
-      }
-      await updatePreferences({ showThinking: value === "show" }, `thinking 展示：${value}`, ctx);
+      if (getDisplayStyle() === "off") await loadSavedPreferences(ctx);
+      await openDisplayMenu(ctx, async style => {
+        if (style === "off") {
+          releaseUI?.(); releaseUI = undefined;
+          changes.reset(); activity.clearChanges(); activity.rebuild([]);
+          persistedFinal = undefined; outcome = "completed";
+        }
+        const wasOff = getDisplayStyle() === "off";
+        selection.style = style;
+        setDisplayStyle(style);
+        if (wasOff && style !== "off") {
+          await loadSavedPreferences(ctx);
+          rebuild(ctx);
+          installUI(ctx);
+        }
+      }, patch => updatePreferences(patch, ctx));
     },
   });
 
@@ -148,7 +82,7 @@ export default function compactToolExtension(pi: ExtensionAPI): void {
     async handler(_args, ctx) {
       if (!interactive(ctx)) return;
       if (!enabled(ctx)) {
-        ctx.ui.notify("off 模式不记录修改报告。使用 /tool-style aggregate 重新启用。", "info");
+        ctx.ui.notify("off 模式不记录修改报告。使用 /tools 切换展示风格以重新启用。", "info");
         return;
       }
       await ctx.waitForIdle();

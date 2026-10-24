@@ -1,3 +1,4 @@
+import { createMenuDriver } from "./helpers/menu.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { mkdtempSync } from "node:fs";
@@ -32,9 +33,10 @@ test("actual Pi session loads the extension, retains active tools and switches e
     const customResult = await custom.execute("custom", { query: "needle" }, undefined, undefined, {} as any);
     assert.deepEqual(customResult.details, { count: 2 });
     const notices: string[] = [];
+    const menu = createMenuDriver();
     initTheme("dark", false);
     const theme = { appearance: "dark", fg: (_: string, text: string) => text, style: (text: string) => text } as unknown as Theme;
-    await session.bindExtensions({ mode: "tui", uiContext: { theme, notify(message: string) { notices.push(message); } } as ExtensionUIContext });
+    await session.bindExtensions({ mode: "tui", uiContext: { theme, custom: menu.custom, notify(message: string) { notices.push(message); } } as ExtensionUIContext });
     const tool = session.getToolDefinition("read")!;
     const row = new ToolExecutionComponent("read", "sdk-row", { path: "sample.txt" }, {}, tool, { requestRender() {} } as any, cwd);
     row.updateResult({ content: [{ type: "text", text: "one\ntwo\nthree" }], details: undefined, isError: false });
@@ -54,18 +56,18 @@ test("actual Pi session loads the extension, retains active tools and switches e
     const customRow = new ToolExecutionComponent("compact_test_search", "custom-sdk-row", { query: "needle" }, {}, custom, { requestRender() {} } as any, cwd);
     customRow.updateResult({ ...customResult, isError: false });
     assert.match(customRow.render(100).join("\n"), /2 matches/);
-    await session.prompt("/tool-style tidy");
+    await menu.change(() => session.prompt("/tools"), "style", "tidy");
     assert.doesNotMatch(customRow.render(100).join("\n"), /compact_test_search\(/);
     assert.equal(getDisplayStyle(), "tidy");
     assert.match(row.render(100).join("\n"), /three/);
-    await session.prompt("/tool-style");
+    await menu.change(() => session.prompt("/tools"), "style", "claude");
     assert.equal(getDisplayStyle(), "claude");
     assert.match(customRow.render(100).join("\n"), /compact_test_search\(/);
     assert.match(row.render(100).join("\n"), /Read\(/);
     assert.match(row.render(100).join("\n"), /three/);
     assert.equal(session.messages.filter((message) => message.role === "assistant").length, 0);
-    assert.equal(notices.length, 2);
-    await session.prompt("/tool-style aggregate");
+    assert.equal(notices.length, 0);
+    await menu.change(() => session.prompt("/tools"), "style", "aggregate");
     const noticeCount = notices.length;
     const runner = (session as any)._extensionRunner;
     let now = 1000;
@@ -97,14 +99,14 @@ test("actual Pi session loads the extension, retains active tools and switches e
       const record = session.sessionManager.getBranch().find(entry => entry.type === "custom" && entry.customType === "compact-tool.activity.v1");
       assert.equal((record as any)?.data.tps, 90);
       assert.equal((record as any)?.data.tpsBasis, "excluding-tools");
-      await session.prompt("/tool-style off");
+      await menu.change(() => session.prompt("/tools"), "style", "off");
       assert.doesNotMatch(new AssistantMessageComponent(final as any, true).render(120).map(stripTerminalSequences).join("\n"), /tok\/s/);
       assert.match(fffRow.render(100).join("\n"), /original search fixture/);
       assert.match(row.render(100).join("\n"), /three/);
-      await session.prompt("/tool-style aggregate");
+      await menu.change(() => session.prompt("/tools"), "style", "aggregate");
       assert.match(fffRow.render(100).join("\n"), /2 matches/);
     } finally { clock.mock.restore(); }
-    await session.prompt("/tool-style off");
+    await menu.change(() => session.prompt("/tools"), "style", "off");
     for (let reload = 0; reload < 2; reload++) {
       await session.reload();
       assert.equal(getDisplayStyle(), "off");
@@ -115,7 +117,7 @@ test("actual Pi session loads the extension, retains active tools and switches e
       assert.doesNotMatch(nativeSearch.render(100).join("\n"), /2 matches/);
       assert.doesNotMatch(new AssistantMessageComponent(final as any, true).render(120).map(stripTerminalSequences).join("\n"), /tok\/s/);
     }
-    await session.prompt("/tool-style aggregate");
+    await menu.change(() => session.prompt("/tools"), "style", "aggregate");
     await session.reload();
     assert.deepEqual(session.getActiveToolNames().sort(), ["bash", "edit", "read", "write"]);
     assert.equal(getDisplayStyle(), "aggregate");

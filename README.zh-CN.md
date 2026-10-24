@@ -29,17 +29,23 @@ pi -ne -e ./index.ts --tui-mode fullscreen
 
 执行直接委托 Pi 官方实现。参数 schema、提示词和官方元数据保留，取消信号、流式回调、完整执行上下文原样转发。使用 Pi 合并后的 shell 和图片设置。不增加 `displaySummary`，不增加模型请求，不修改返回结果。
 
-## 风格切换
+## 展示设置
 
-```text
-/tool-style          依次切换 aggregate → tidy → claude → off
-/tool-style aggregate 紧凑工具记录与回答末尾统计
-/tool-style tidy     项目一短摘要风格
-/tool-style claude   项目三 Claude 风格
-/tool-style off      原生展示，停用本插件的展示和记录
-```
+输入 `/tools` 打开展示菜单，只查看不会修改设置。↑↓ 选择设置，Enter 打开选项，再按 Enter 确认。Esc 从选项返回且不修改设置，在主菜单按 Esc 退出。修改立即生效，菜单保持打开。
 
-已有工具行立即刷新，并保留每条的展开状态。`/tool-style` 的选择在当前 Pi 进程内保留，reload 和新会话都不会重置。退出 Pi 后重新启动，按 `--compact-style` 选择风格；未指定时默认 aggregate。不写入磁盘配置。
+| 设置 | 可选值 |
+|---|---|
+| 展示风格 | aggregate、tidy、claude、off |
+| Bash 颜色 | green、blue、cyan、purple、amber、orange、pink、gray |
+| Codemode 颜色 | 同上 |
+| Codemode 展示 | compact、calls |
+| 已结束的思考 | 显示、隐藏 |
+
+非 aggregate 风格下，其余四项仍显示已保存值，但禁用并注明“仅 aggregate 可用”。菜单明确标注保存范围：风格在当前进程保留，其他偏好全局保存。
+
+旧配置命令 `/tool-style`、`/tool-color`、`/codemode-view`、`/tool-thinking` 已移除，不保留别名。`/changes` 独立保留。
+
+已有工具行立即刷新，并保留每条的展开状态。风格选择在当前 Pi 进程内保留，reload 和新会话都不会重置。退出 Pi 后重新启动，按 `--compact-style` 选择风格；未指定时默认 aggregate。不写入磁盘配置。
 
 指定启动风格：
 
@@ -47,7 +53,7 @@ pi -ne -e ./index.ts --tui-mode fullscreen
 pi -ne -e ./index.ts --tui-mode fullscreen --compact-style tidy
 ```
 
-使用 `--compact-style off` 可从启动起保持原生展示。`off` 恢复已有内置工具及已适配自定义工具的原生 renderer，停止 Think 调整、末尾统计、活动记录和 Edit / Write 修改报告记录。工具执行和激活状态不变，插件命令仍可使用。通过 `/tool-style aggregate`、`tidy` 或 `claude` 可以重新启用，无需 reload。测试其他插件时，执行 `/tool-style off` 后可以反复 reload，仍保持停用。
+使用 `--compact-style off` 可从启动起保持原生展示。`off` 恢复已有内置工具及已适配自定义工具的原生 renderer，停止 Think 调整、末尾统计、活动记录和 Edit / Write 修改报告记录。工具执行和激活状态不变，插件命令仍可使用。在 `/tools` 中选择 aggregate、tidy 或 claude 可以重新启用，无需 reload。测试其他插件时，在 `/tools` 中选择 off 后可以反复 reload，仍保持停用。
 
 切入 `off` 会丢弃尚未生成的修改报告快照和当前报告链接，不删除已生成的 HTML。重新启用后，从后续 Edit / Write 开始记录修改，无法补回停用期间的起点快照。
 
@@ -55,35 +61,21 @@ pi -ne -e ./index.ts --tui-mode fullscreen --compact-style tidy
 
 ## aggregate 展示偏好
 
-```text
-/codemode-view          切换 A / B
-/codemode-view compact  A：codemode 收起时只显示一行（默认）
-/codemode-view calls    B：摘要下完整显示原生嵌套调用区域
-/tool-thinking         切换 thinking 显示／隐藏
-/tool-thinking show    显示 thinking（默认，沿用原生展开状态）
-/tool-thinking hide    隐藏已结束的 thinking，仅显示当前正在生成的一段
-```
+在 `/tools` 中，**Codemode 展示**选择 compact（A：收起时只显示一行，默认）或 calls（B：摘要下完整显示原生嵌套调用区域）。**已结束的思考**选择显示（默认）或隐藏；隐藏时仍保留当前正在生成的一段。
 
 两项设置独立，仅影响 aggregate。切换立即刷新已有记录，不改变单条工具的展开状态。B 不显示脚本及输出正文；调用列表保留原生展开时的参数、换行、状态、耗时、错误与费用信息，全部调用显示，并实时更新运行状态。无嵌套调用时 A / B 都保持单行。点击摘要或任意调用行展开整个 codemode，再次收起时恢复所选 A / B；`Ctrl+O` 保持原生全局展开操作。
 
 隐藏 thinking 不修改模型思考设置或消息内容。当前正在生成的一段仍使用原生内容和展开交互；思考结束时立即隐藏，工具参数生成、执行、正文输出和停止阶段不保留旧 thinking，也不留下空行。串行工具连续排列；parallel 组保留分组间距。重新显示时保留 thinking 原有展开状态，普通正文、错误及最终统计不受影响。tidy / claude 保持原生 thinking 展示。
 
-命令自动保存到 `getAgentDir()/extension-data/pi-compact-tool/preferences.json`，通常为 `~/.pi/agent/extension-data/pi-compact-tool/preferences.json`。所有项目共用，跨新会话和 reload 恢复；首次默认 A + thinking 显示。`/tool-style` 仅在当前 Pi 进程内保留，不保存到此文件。保存失败时报告错误，不改变当前偏好。
+偏好修改自动保存到 `getAgentDir()/extension-data/pi-compact-tool/preferences.json`，通常为 `~/.pi/agent/extension-data/pi-compact-tool/preferences.json`。所有项目共用，跨新会话和 reload 恢复；首次默认 A + thinking 显示。风格选择仅在当前 Pi 进程内保留，不保存到此文件。保存失败时报告错误，不改变当前偏好。
 
 ## 快速试工具名颜色
 
 仅 aggregate 的 codemode 与 Bash 工具名支持试色。codemode 默认为柔和琥珀色，Bash 默认使用蓝色；失败时仍优先显示红色。原生完整展开的 codemode 内容保持原样。
 
-```text
-/tool-color                  查看当前颜色和可选项
-/tool-color bash             给 Bash 切换到下一种颜色
-/tool-color bash blue        Bash 使用蓝色
-/tool-color codemode amber   codemode 使用琥珀色
-/tool-color bash reset       恢复 Bash 默认蓝色并保存
-/tool-color codemode reset   恢复 codemode 默认琥珀色并保存
-```
+在 `/tools` 中选择 **Bash 颜色** 或 **Codemode 颜色**，打开颜色选项后按 Enter 确认。恢复默认时，Bash 选择 blue，codemode 选择 amber。
 
-可选颜色：`green` 绿色、`blue` 蓝色、`cyan` 青色、`purple` 紫色、`amber` 琥珀色、`orange` 橙色、`pink` 粉色、`gray` 灰色。省略颜色按这个顺序循环。已有工具行立即刷新，保持展开状态。颜色选择自动保存到同一个全局 preferences.json，跨项目、新会话及 reload 恢复，已保存的颜色优先于默认值。reset 恢复默认色并保存。旧配置没有颜色字段时使用 Bash 蓝色、codemode 琥珀色，同时保留已有 A/B 和 thinking 设置；tidy / claude 不受影响。
+可选颜色：`green` 绿色、`blue` 蓝色、`cyan` 青色、`purple` 紫色、`amber` 琥珀色、`orange` 橙色、`pink` 粉色、`gray` 灰色。已有工具行立即刷新，保持展开状态。颜色选择自动保存到同一个全局 preferences.json，跨项目、新会话及 reload 恢复，已保存的颜色优先于默认值。重新选择默认色也会保存。旧配置没有颜色字段时使用 Bash 蓝色、codemode 琥珀色，同时保留已有 A/B 和 thinking 设置；tidy / claude 不受影响。
 
 ## 查看本轮修改
 
