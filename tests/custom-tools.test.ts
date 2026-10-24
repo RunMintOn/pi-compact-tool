@@ -80,6 +80,59 @@ test("apply_patch legacy results, no-ops and failures never report requested lin
   } finally { release(); }
 });
 
+test("apply_patch expanded failures show native error and recovery details only once in every style", () => {
+  const recovery = "Changes already applied (in execution order):";
+  const result = { content: [{ type: "text" as const, text: `FAILED_MATCH\n${recovery}\n- Updated: first.ts` }], details: undefined, isError: true };
+  for (const style of ["tidy", "aggregate", "claude"] as const) {
+    resetDisplayState(style);
+    const release = installActivityUI(new ActivityProjection(), () => theme);
+    try {
+      const definition = { ...custom("apply_patch"),
+        renderResult: () => new Text(result.content[0]!.text + "\nNATIVE_DIFF", 0, 0) };
+      const row = new ToolExecutionComponent("apply_patch", "failed-patch", { patch: "*** Update File: first.ts" }, {}, definition, { requestRender() {} } as any, process.cwd());
+      row.updateResult(result);
+      for (let cycle = 0; cycle < 2; cycle++) {
+        row.setExpanded(true);
+        const expanded = plain(row.render(120));
+        assert.equal(expanded.split("FAILED_MATCH").length - 1, 1, style);
+        assert.equal(expanded.split(recovery).length - 1, 1, style);
+        assert.equal(expanded.split("NATIVE_DIFF").length - 1, 1, style);
+        row.setExpanded(false);
+        assert.doesNotMatch(plain(row.render(120)), /Changes already applied|NATIVE_DIFF/);
+      }
+    } finally { release(); }
+  }
+});
+
+test("large native apply_patch details stay complete and repeated frames reuse the panel layout", () => {
+  resetDisplayState("aggregate");
+  const release = installActivityUI(new ActivityProjection(), () => theme);
+  try {
+    const body = Array.from({ length: 4000 }, (_, i) => `+${i} native diff row 中文`).join("\n");
+    const definition = { ...custom("apply_patch"),
+      renderResult: (result: any) => new Text(body + "\n" + result.content[0].text, 0, 0) };
+    const row = new ToolExecutionComponent("apply_patch", "large-patch", { patch: "*** Update File: large.ts" }, {}, definition, { requestRender() {} } as any, process.cwd());
+    row.updateResult({ content: [{ type: "text", text: "INITIAL_RESULT" }], details: undefined, isError: false });
+    row.setExpanded(true);
+    const initial = row.render(120);
+    assert.equal((plain(initial).match(/native diff row/g) ?? []).length, 4000);
+    const started = performance.now();
+    for (let i = 0; i < 5; i++) assert.deepEqual(row.render(120), initial);
+    assert.ok(performance.now() - started < 100, "five warm frames should not repaint 4000 native rows");
+    row.invalidate();
+    assert.deepEqual(row.render(120), initial);
+    for (const width of [40, 120]) {
+      const rows = row.render(width);
+      assert.ok(rows.every(line => visibleWidth(line) <= width));
+      assert.match(plain(rows), /3999 native diff row 中文/);
+    }
+    row.updateResult({ content: [{ type: "text", text: "UPDATED_RESULT" }], details: undefined, isError: false });
+    const updated = plain(row.render(120));
+    assert.match(updated, /UPDATED_RESULT/);
+    assert.doesNotMatch(updated, /INITIAL_RESULT/);
+  } finally { release(); }
+});
+
 test("FFF tools adapt inside the UI without changing registered definitions or executing tools", () => {
   resetDisplayState("aggregate");
   const release = installActivityUI(new ActivityProjection(), () => theme);

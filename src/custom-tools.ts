@@ -94,16 +94,10 @@ export function adaptCustomTool(component: ToolExecutionComponent, includeBuiltI
     (includeBuiltIns && ["read", "bash", "edit", "write", "grep", "find", "ls"].includes(native.toolName) ? {} : undefined);
   const original = decoration?.original ?? native.toolDefinition;
   if (!displayAdapter || !original) return undefined;
-  const decorated = decorateTool({ ...original, name: native.toolName }, displayAdapter);
-  if (native.toolName === "apply_patch" && original.renderResult) {
-    const renderResult = decorated.renderResult!;
-    decorated.renderResult = (result, options, theme, context) => {
-      const compact = renderResult(result, options, theme, context);
-      return options.expanded
-        ? nativePanel(original.renderResult!(result, options, theme, { ...context, lastComponent: undefined }), theme, options.isPartial)
-        : compact;
-    };
-  }
+  const decorated = decorateTool({ ...original, name: native.toolName },
+    native.toolName === "apply_patch" && original.renderResult
+      ? { ...displayAdapter, renderExpanded: original.renderResult }
+      : displayAdapter);
   if (native.toolName === "codemode") {
     const renderCall = decorated.renderCall!;
     const renderResult = decorated.renderResult!;

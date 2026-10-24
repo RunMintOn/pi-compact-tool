@@ -148,6 +148,8 @@ FFF rows show pattern, path and `totalMatched` counts (matches for ffgrep, files
 
 Apply Patch rows show patch file paths and move destinations, then file counts and actual additions/deletions from `details.changes`. Legacy results fall back to output file counts without guessing applied line counts from the requested patch. Expansion retains native diffs and diagnostics, or full text output when no native result renderer exists. This is display-only; Apply Patch does not participate in `/changes` snapshots.
 
+Native Apply Patch details are rendered once inside the existing shell. Aggregate's painted-layout cache includes those details, avoiding full-output repainting on every scroll frame. Combined-plugin regression, move-display and performance results are recorded in [Apply Patch validation](./checks/apply-patch-validation.md).
+
 Other custom tools retain their renderer unless opted in. Wrap the definition at its original registration site:
 
 ```ts
@@ -174,7 +176,7 @@ pi.registerTool(decorateTool(existingSearchTool, {
 }));
 ```
 
-Kinds: `generic`, `read`, `search`, `bash`, `edit`, and `write`. Native diffs are shown only for `edit` results already containing `details.diff`. Execution, schemas and model-facing metadata retain their original definitions. Adapters format supplied data only; they should not read files or execute tools. Opting in replaces the original renderer, including any specialized buttons or interactions.
+Kinds: `generic`, `read`, `search`, `bash`, `edit`, and `write`. An adapter can supply `renderExpanded` with the tool's result-renderer signature to put its native expanded body inside the shell. Without it, native diffs are shown only for `edit` results already containing `details.diff`. Execution, schemas and model-facing metadata retain their original definitions. Adapters format supplied data only; they should not read files or execute tools. Opting in replaces the original renderer, including any specialized buttons or interactions.
 
 This version does not include whole-Run collapse, a separate detail popup, model-written intents, Project One's tool-wide shortcuts, or its Markdown auto-expansion mode. Unwrapped custom tools retain their own display and spacing.
 

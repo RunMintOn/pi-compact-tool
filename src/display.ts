@@ -16,6 +16,7 @@ export interface DisplayAdapter {
   kind?: DisplayKind;
   target?: (args: Record<string, unknown>) => string;
   summary?: (result: Parameters<NonNullable<ToolDefinition<any>["renderResult"]>>[0]) => string;
+  renderExpanded?: ToolDefinition<any>["renderResult"];
 }
 const decorationKey = Symbol.for("pi-compact-tool.decorations.v1");
 type Decoration = { original: ToolDefinition<any, any, any>; adapter: DisplayAdapter };
@@ -119,6 +120,9 @@ function callComponent(tool: { name: string }, adapter: DisplayAdapter, kind: Di
   return container;
 }
 function resultComponent(adapter: DisplayAdapter, kind: DisplayKind, result: Result, expanded: boolean, partial: boolean, theme: Theme, context: DisplayContext): Component {
+  if (expanded && adapter.renderExpanded) {
+    return adapter.renderExpanded(result, { expanded, isPartial: partial }, theme, context);
+  }
   const rawOutput = textOutput(result);
   const error = context.isError || (result as Result & { isError?: boolean }).isError === true;
   const hint = truncation(result);
@@ -241,7 +245,9 @@ export function decorateTool<TParams extends TSchema, TDetails, TState>(
             const language = getLanguageFromPath(path(record(context.args)));
             body = language ? new Text(highlightCode(content, language).join("\n"), 0, 0) : fullText(content, theme);
           } else {
-            body = options.isPartial ? fullText(textOutput(result), theme, context.isError) : resultComponent(adapter, kind, result, true, false, theme, context);
+            body = options.isPartial && !adapter.renderExpanded
+              ? fullText(textOutput(result), theme, context.isError)
+              : resultComponent(adapter, kind, result, true, options.isPartial, theme, context);
           }
         }
         box.result(aggregateSummary(adapter, kind, result, context, options.isPartial), body);

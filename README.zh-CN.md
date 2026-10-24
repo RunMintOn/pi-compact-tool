@@ -142,6 +142,8 @@ skill 指导 Agent 检查实际工具数据、选择接入位置、保留展开�
 - `codemode` 默认收起显示代码首行和内部调用数；aggregate 的 B 模式另显示完整原生内部调用区域。无内部调用时显示脚本输出行数，不计原生状态头。展开保留原生完整脚本、内部调用状态与输出。统计仍只计顶层 codemode 调用，内部调用不冒充独立 parallel 组。
 - 不自动启用这些工具。其他未接入工具保持原 renderer。
 
+Apply Patch 的原生展开正文只在现有外壳中渲染一次，并纳入 aggregate 的文字排版缓存，不再每个滚动帧处理整份输出。双插件回归、移动展示和性能测量见 [Apply Patch 验证](./checks/apply-patch-validation.md)。
+
 其他自定义工具需要接管展示时，在原有 `pi.registerTool()` 处包装工具定义：
 
 ```ts
