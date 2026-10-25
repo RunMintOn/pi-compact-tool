@@ -78,7 +78,7 @@ export default function compactToolExtension(pi: ExtensionAPI): void {
   });
 
   pi.registerCommand("changes", {
-    description: "Open the latest Edit / Write net changes in your browser",
+    description: "Open the latest Edit / Write / apply_patch net changes in your browser",
     async handler(_args, ctx) {
       if (!interactive(ctx)) return;
       if (!enabled(ctx)) {
@@ -137,13 +137,17 @@ export default function compactToolExtension(pi: ExtensionAPI): void {
     }
     if (event.message.role === "assistant") activity.completed(event.message, Date.now());
   });
-  pi.on("tool_execution_start", (event, ctx) => {
-    if (!enabled(ctx) || event.parentToolCallId) return;
-    activity.started(event.toolCallId, Date.now());
+  pi.on("tool_execution_start", async (event, ctx) => {
+    if (!enabled(ctx)) return;
+    if (!event.parentToolCallId) activity.started(event.toolCallId, Date.now());
+    if (event.toolName === "apply_patch" && typeof event.args.patch === "string") {
+      await changes.capturePatchBefore(event.args.patch, ctx.cwd);
+    }
   });
   pi.on("tool_execution_end", (event, ctx) => {
-    if (!enabled(ctx) || event.parentToolCallId) return;
-    activity.ended(event.toolCallId, Date.now(), event.toolName === "bash" ? event.result : undefined);
+    if (!enabled(ctx)) return;
+    if (event.toolName === "apply_patch" && event.isError) changes.patchFailed();
+    if (!event.parentToolCallId) activity.ended(event.toolCallId, Date.now(), event.toolName === "bash" ? event.result : undefined);
   });
   pi.on("agent_settled", async (_event, ctx) => {
     if (!enabled(ctx)) return;
@@ -153,7 +157,7 @@ export default function compactToolExtension(pi: ExtensionAPI): void {
     try {
       const report = await changes.finish(Date.now(), outcome);
       if (report) {
-        if (report.files.length) {
+        if (report.files.length || report.incomplete) {
           const path = await changes.save(report, join(getAgentDir(), "extension-data", "pi-compact-tool", "changes"));
           if (timing.finalKey) activity.setChanges(timing.finalKey, { label: "View changes", url: pathToFileURL(path).href });
         } else if (timing.finalKey) activity.setChanges(timing.finalKey, { label: "No net changes" });

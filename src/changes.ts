@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, open, realpath, stat, writeFile } from "node:fs/promises";
-import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { generateUnifiedPatch } from "@earendil-works/pi-coding-agent";
 import { parse } from "diff2html";
 import type { DiffFile } from "diff2html/lib/types.js";
@@ -27,6 +27,7 @@ export interface ChangeReport {
   files: ChangedFile[];
   added: number;
   deleted: number;
+  incomplete?: boolean;
 }
 type Snapshot = { exists: boolean; content: string; notice?: string };
 interface Run {
@@ -35,6 +36,7 @@ interface Run {
   prompts: string[];
   files: Map<string, Promise<Snapshot>>;
   bytes: number;
+  patchFailed?: boolean;
 }
 
 async function snapshot(path: string): Promise<Snapshot> {
@@ -79,7 +81,7 @@ function fileChange(path: string, before: Snapshot, after: Snapshot): ChangedFil
   };
 }
 
-/** Only keeps the first snapshot of files about to be written by our Edit/Write tools. */
+/** Keeps the first snapshot of files touched by tracked file tools. */
 export class ChangeTracker {
   private current?: Run;
   latestPage?: string;
@@ -94,6 +96,16 @@ export class ChangeTracker {
       block?.type === "text" ? block.text : block?.type === "image" ? `[Image: ${block.mimeType ?? "attachment"}]` : "",
     ).filter(Boolean).join("\n") : "";
     this.current.prompts.push(text);
+  }
+  async capturePatchBefore(patch: string, cwd: string): Promise<void> {
+    // Include both ends of a move, even if applying the patch later fails.
+    for (const line of patch.split(/\r?\n/)) {
+      const file = /^\*\*\* (?:(?:Add|Update|Delete) File|Move to): (.+)$/.exec(line.trimEnd());
+      if (file) await this.captureBefore(resolve(cwd, file[1]!));
+    }
+  }
+  patchFailed(): void {
+    if (this.current) this.current.patchFailed = true;
   }
   async captureBefore(absolutePath: string): Promise<void> {
     const run = this.current;
@@ -118,7 +130,7 @@ export class ChangeTracker {
   async finish(now: number, outcome: ChangeOutcome): Promise<ChangeReport | undefined> {
     const run = this.current;
     this.current = undefined;
-    if (!run?.files.size) return undefined;
+    if (!run || (!run.files.size && !run.patchFailed)) return undefined;
     const files: ChangedFile[] = [];
     const cwd = await realpath(run.cwd).catch(() => run.cwd);
     // Sequential final reads avoid opening all observed files at once.
@@ -135,6 +147,7 @@ export class ChangeTracker {
       id: randomUUID(), cwd: run.cwd, start: run.start, end: now, outcome, prompts: run.prompts, files,
       added: files.reduce((sum, file) => sum + file.added, 0),
       deleted: files.reduce((sum, file) => sum + file.deleted, 0),
+      incomplete: run.patchFailed || undefined,
     };
   }
   async save(report: ChangeReport, directory: string): Promise<string> {

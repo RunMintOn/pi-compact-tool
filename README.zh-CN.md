@@ -53,9 +53,9 @@ pi -ne -e ./index.ts --tui-mode fullscreen
 pi -ne -e ./index.ts --tui-mode fullscreen --compact-style tidy
 ```
 
-使用 `--compact-style off` 可从启动起保持原生展示。`off` 恢复已有内置工具及已适配自定义工具的原生 renderer，停止 Think 调整、末尾统计、活动记录和 Edit / Write 修改报告记录。工具执行和激活状态不变，插件命令仍可使用。在 `/tools` 中选择 aggregate、tidy 或 claude 可以重新启用，无需 reload。测试其他插件时，在 `/tools` 中选择 off 后可以反复 reload，仍保持停用。
+使用 `--compact-style off` 可从启动起保持原生展示。`off` 恢复已有内置工具及已适配自定义工具的原生 renderer，停止 Think 调整、末尾统计、活动记录和 Edit / Write / apply_patch 修改报告记录。工具执行和激活状态不变，插件命令仍可使用。在 `/tools` 中选择 aggregate、tidy 或 claude 可以重新启用，无需 reload。测试其他插件时，在 `/tools` 中选择 off 后可以反复 reload，仍保持停用。
 
-切入 `off` 会丢弃尚未生成的修改报告快照和当前报告链接，不删除已生成的 HTML。重新启用后，从后续 Edit / Write 开始记录修改，无法补回停用期间的起点快照。
+切入 `off` 会丢弃尚未生成的修改报告快照和当前报告链接，不删除已生成的 HTML。重新启用后，从后续 Edit / Write / apply_patch 开始记录修改，无法补回停用期间的起点快照。
 
 `/compact` 是 Pi 的上下文压缩命令，本项目不占用它。`Ctrl+O` 仍是 Pi 的全局展开操作，本项目的主要交互是 fullscreen 单条点击。普通终端滚动模式不提供同样的点击交互。
 
@@ -79,7 +79,7 @@ pi -ne -e ./index.ts --tui-mode fullscreen --compact-style tidy
 
 ## 查看本轮修改
 
-在 TUI 会话里，Edit / Write 第一次真正写入某个文件前保存起点快照。整轮任务完全结束后，只读取这些文件的最终内容，生成独立 HTML 页面。同一文件多次编辑合并成一份净 diff；恢复原样的文件不计入净修改。不扫描仓库，不使用 Git HEAD 作为基准。路径解析、编辑规则和文件写入队列仍由官方工具处理；快照通过官方文件操作接口记录，不改变工具结果或模型上下文。
+在 TUI 会话里，Edit / Write 第一次真正写入某个文件前保存起点快照。`pi-codex-apply-patch-helper-prototype` 的 `apply_patch` 也进入同一份记录：执行前从补丁头提取新增、更新、删除和移动路径并保存快照，覆盖直接调用与 codemode 嵌套调用。整轮任务完全结束后，只读取这些文件的最终内容，生成独立 HTML 页面。同一文件多工具、多次编辑合并成一份净 diff；恢复原样的文件不计入净修改。不扫描仓库，不使用 Git HEAD 作为基准。Edit / Write 的路径解析、编辑规则和文件写入队列仍由官方工具处理，快照通过官方文件操作接口记录；补丁记录通过执行事件接入，不修改 helper、工具结果或模型上下文。
 
 aggregate 统计第一行在工具枚举后显示 **View changes**。宽度不足时先省略左侧统计，保留链接；极窄时链接缩短为 **Changes**。第二行日期规则不变。链接打开方式取决于终端的 OSC 8 支持，普通模式可能需要 Ctrl／Command 点击。所有展示风格都可以使用：
 
@@ -91,9 +91,11 @@ aggregate 统计第一行在工具枚举后显示 **View changes**。宽度不�
 
 页面包含可折叠的完整 **User message** 文本，以及同一轮内观察到的追加用户消息、起止时间、完成／中止／错误状态、净修改文件数和增删行数。左侧文件目录显示 Added / Modified / Deleted / Unavailable，并随阅读位置高亮当前文件。**Auto** 按 diff 区域宽度自动选择布局：至少 900 px 时双栏，否则单栏；**Split** 和 **Unified** 手动指定布局。切换布局保留当前文件位置。**Wrap lines** 让长行折行。窄窗口通过 **Files** 打开文件目录。页面自动跟随系统／浏览器明暗主题。
 
-范围是**本插件 Edit / Write 涉及的文件**，包含通过这些工具定义执行的嵌套调用。仅由 Bash 或其他工具修改的文件不记录；已记录文件的终点可能包含后续格式化、外部编辑或删除。中止／错误后已经发生的修改仍可查看。二进制或无效 UTF-8 文件、读取失败、超过 1 MiB 的文件标为 Unavailable，不误显示为新增文件；整轮起点快照预算为 16 MiB。无法比较的文件不计入已知增删行数。
+范围是**本插件 Edit / Write 或上述 apply_patch helper 涉及的文件**，包含嵌套调用。仅由 Bash 或其他工具修改的文件不记录；已记录文件的终点可能包含后续格式化、外部编辑或删除。移动的源和目标分开按整轮起终点比较，通常显示 Deleted + Added；目标原本存在时显示 Modified。中止／错误后已经发生的修改仍可查看。二进制或无效 UTF-8 文件、读取失败、超过 1 MiB 的文件标为 Unavailable，不误显示为新增文件；整轮起点快照预算为 16 MiB。无法比较的文件不计入已知增删行数。
 
-页面保存在 `getAgentDir()/extension-data/pi-compact-tool/changes/`，通常为 `~/.pi/agent/extension-data/pi-compact-tool/changes/`。diff2html 的脚本和样式内嵌，不需要服务器或联网。仅保存 HTML，结算后释放源文件快照。链接关联和最近页面路径只保存在当前会话／运行的内存中；reload 或切换会话后不恢复。已有 HTML 仍可手动打开，不自动清理。功能加载前的轮次无法补造完整 diff。如果所有文件恢复原样，第一行显示 **No net changes**，不生成新页面。
+本轮任意 `apply_patch` 失败或被中止后，已落盘修改仍会展示，页面顶部只显示一次 **Records may be incomplete（记录可能不完整）** 提示。即使没有可确认的修改或无法解析任何路径，也生成带提示的报告，不显示确定的 No net changes。同轮重试成功不移除此提示；下一轮重新记录。
+
+页面保存在 `getAgentDir()/extension-data/pi-compact-tool/changes/`，通常为 `~/.pi/agent/extension-data/pi-compact-tool/changes/`。diff2html 的脚本和样式内嵌，不需要服务器或联网。仅保存 HTML，结算后释放源文件快照。链接关联和最近页面路径只保存在当前会话／运行的内存中；reload 或切换会话后不恢复。已有 HTML 仍可手动打开，不自动清理。功能加载前的轮次无法补造完整 diff。如果所有文件恢复原样且没有补丁失败，第一行显示 **No net changes**，不生成新页面。
 
 ## 分组与统计
 
@@ -130,7 +132,7 @@ skill 指导 Agent 检查实际工具数据、选择接入位置、保留展开�
 `ffgrep`、`fffind`、`codemode`、`apply_patch` 在 TUI 中自动接入，无需修改它们的插件或注册代码。适配集中在 `src/custom-tools.ts`，只替换显示组件使用的工具定义，不修改工具注册表、执行函数、schema、exposure 或激活状态；shutdown / reload 恢复原 renderer。
 
 - `ffgrep` 收起显示 pattern、path 和 `totalMatched` 匹配数；`fffind` 使用文件数。旧结果缺少元数据时显示结果行数，展开查看完整输出。
-- `apply_patch` 收起显示补丁中的文件路径和移动目标，成功后显示 `details.changes` 的文件数和实际增删行数；旧结果回退到输出中的文件数，不从请求补丁推测已应用行数。展开保留原生 diff 和诊断详情；没有原生结果 renderer 时显示完整文本输出。仅适配展示，不接入 `/changes` 的文件快照。
+- `apply_patch` 收起显示补丁中的文件路径和移动目标，成功后显示 `details.changes` 的文件数和实际增删行数；旧结果回退到输出中的文件数，不从请求补丁推测已应用行数。展开保留原生 diff 和诊断详情；没有原生结果 renderer 时显示完整文本输出。展示适配之外，通过执行事件为上述共享 `/changes` 报告记录文件快照。
 - `codemode` 默认收起显示代码首行和内部调用数；aggregate 的 B 模式另显示完整原生内部调用区域。无内部调用时显示脚本输出行数，不计原生状态头。展开保留原生完整脚本、内部调用状态与输出。统计仍只计顶层 codemode 调用，内部调用不冒充独立 parallel 组。
 - 不自动启用这些工具。其他未接入工具保持原 renderer。
 

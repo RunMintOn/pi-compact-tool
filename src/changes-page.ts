@@ -32,7 +32,8 @@ export function renderChangesPage(report: ChangeReport): string {
 <header class="report-header">
   <div class="heading"><h1>Task changes</h1><span id="outcome" class="badge"></span></div>
   <div id="metadata" class="metadata"></div>
-  <p class="scope">Net changes in files touched by Edit / Write. Other file operations are not tracked.</p>
+  <p class="scope">Net changes in files touched by Edit / Write / apply_patch. Other file operations are not tracked.</p>
+  ${report.incomplete ? '<p id="incomplete-notice" class="notice" role="status">Records may be incomplete: an apply_patch call failed or was interrupted. Only observed file changes are shown.</p>' : ""}
   <details id="user-messages"><summary>User message</summary><div id="prompts"></div></details>
 </header>
 <div class="layout">

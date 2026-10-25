@@ -120,7 +120,7 @@
       }
       diffs.append(section);
     });
-    if (!report.files.length) diffs.textContent = "No net changes.";
+    if (!report.files.length) diffs.textContent = report.incomplete ? "No file changes could be confirmed." : "No net changes.";
     restorePosition(previousTop);
     activate(activeIndex);
     rendering = false;
