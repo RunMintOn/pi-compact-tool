@@ -23,9 +23,19 @@ type Decoration = { original: ToolDefinition<any, any, any>; adapter: DisplayAda
 const decorations = (globalThis as typeof globalThis & { [decorationKey]?: WeakMap<object, Decoration> })[decorationKey]
   ??= new WeakMap<object, Decoration>();
 export function getToolDecoration(tool: object): Decoration | undefined { return decorations.get(tool); }
-const builtInKinds: Record<string, DisplayKind> = {
-  bash: "bash", read: "read", grep: "search", find: "search", ls: "search", edit: "edit", write: "write",
-};
+/**
+ * Display kind for each built-in tool this extension renders. This is the single
+ * source of truth for the built-in name list: `tools.ts` derives its registered
+ * names from it and `custom-tools.ts` uses it to recognize already-adapted
+ * built-ins, so adding a built-in only needs an entry here.
+ */
+const builtInNames = {
+  // Registration order is user-visible, so it is kept as the previous explicit
+  // list rather than the order display kinds happen to be declared in.
+  read: "read", bash: "bash", edit: "edit", write: "write", grep: "search", find: "search", ls: "search",
+} as const satisfies Record<string, DisplayKind>;
+export const builtInKinds: Record<string, DisplayKind> = builtInNames;
+export type BuiltInName = keyof typeof builtInNames;
 const titles: Record<string, string> = { bash: "Bash", read: "Read", grep: "Grep", find: "Find", ls: "Ls", edit: "Edit", write: "Write" };
 type Result = Parameters<NonNullable<ToolDefinition<any>["renderResult"]>>[0];
 

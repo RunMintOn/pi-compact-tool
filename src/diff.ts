@@ -11,10 +11,10 @@ export type DiffLine =
   | { type: "insert"; newNumber: number; content: string };
 
 export interface DiffHunk {
-  /** Rendered as `-12,9 +12,10` in the page. */
-  header: string;
   oldStartLine: number;
+  oldLineCount: number;
   newStartLine: number;
+  newLineCount: number;
   lines: DiffLine[];
 }
 
@@ -32,8 +32,12 @@ export interface FileDiff {
  * handles the shapes jsdiff emits rather than arbitrary git output: CRLF line
  * endings, `\ No newline at end of file` markers, and empty sides for created or
  * deleted files.
+ *
+ * The page folds long unchanged runs, but jsdiff caps a run at twice this context
+ * on either side of a change, so the default is well above the page's fold
+ * threshold; at 4 nearly every run is too short to fold.
  */
-export function diffFile(path: string, before: string, after: string, contextLines = 4): FileDiff {
+export function diffFile(path: string, before: string, after: string, contextLines = 10): FileDiff {
   const patch = structuredPatch(path, path, before, after, "", "", { context: contextLines });
   const blocks: DiffHunk[] = [];
   let addedLines = 0;
@@ -60,9 +64,10 @@ export function diffFile(path: string, before: string, after: string, contextLin
       }
     }
     blocks.push({
-      header: `@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@`,
       oldStartLine: hunk.oldStart,
+      oldLineCount: hunk.oldLines,
       newStartLine: hunk.newStart,
+      newLineCount: hunk.newLines,
       lines,
     });
   }

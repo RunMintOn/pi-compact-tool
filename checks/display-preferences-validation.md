@@ -4,10 +4,11 @@
 
 - 起点 commit：`5ed19f2288d5a97f7cd4333a68d4921b522efdf1`。
 - 本地 tickets 位于 `.scratch/aggregate-display/issues/`，按 01 → 02 → 03 串行完成。实现和 review 均未使用 subagent。
-- `/codemode-view compact|calls`：A 单行；B 使用原生 expanded result renderer，仅把传入 renderer 的 content 替换为空，从而取出整个嵌套调用区域。不修改实际结果，不复制原生参数、状态、错误或费用格式。全部调用显示；partial updates 可直接复用，因此支持实时刷新。
+- `/tools` 菜单：风格、Bash 颜色、Codemode 颜色、Codemode 展示、已结束的思考。旧的 `/tool-style`、`/tool-color`、`/codemode-view`、`/tool-thinking` 已移除，不保留别名。
+- Codemode 展示 `compact|calls`：A 单行；B 使用原生 expanded result renderer，仅把传入 renderer 的 content 替换为空，从而取出整个嵌套调用区域。不修改实际结果，不复制原生参数、状态、错误或费用格式。全部调用显示；partial updates 可直接复用，因此支持实时刷新。
 - 点击摘要或调用区域展开／收起整个 codemode。切换 A/B 保留工具展开状态，无嵌套调用时仍单行。
-- `/tool-thinking show|hide`：仅在 aggregate 隐藏 assistant thinking 组件及其占位间距。原始 children 和 thinking 展开状态保留；普通文本、错误和统计不隐藏。区域边界计算忽略隐藏节点，串行工具连续，parallel 组保持分组间距。
-- 两项偏好通过插件独立 JSON 自动保存到全局 agent directory，首次默认 compact + thinking 显示。reload 和另一项目恢复；/tool-style 保持现有不持久化行为。
+- 已结束的思考 `显示|隐藏`：仅在 aggregate 隐藏 assistant thinking 组件及其占位间距。原始 children 和 thinking 展开状态保留；普通文本、错误和统计不隐藏。区域边界计算忽略隐藏节点，串行工具连续，parallel 组保持分组间距。
+- 四项偏好（两项颜色、codemode 展示、thinking）通过插件独立 JSON 自动保存到全局 agent directory，首次默认 Bash 蓝色、codemode 琥珀色、compact + thinking 显示。reload 和另一项目恢复。风格不进该文件：它在当前进程内保留，重启由 `--compact-style` 决定。
 - 未修改 Pi 宿主源码、工具执行、模型消息或图片协议。
 
 ## 行为验证
@@ -88,7 +89,7 @@ CPU profile 中主要开销为 `truncateToWidth`、文字区域排版和隐藏�
 ## 后续：工具名快速试色
 
 - 起点 commit：`84fb61f`。codemode 默认琥珀色，Bash 默认保留原绿色。
-- 新增 `/tool-color bash|codemode [color|reset]`。省略颜色循环切换；无参数显示当前值和用法。支持 green / blue / cyan / purple / amber / orange / pink / gray。
+- 新增颜色命令（现已并入 `/tools` 菜单，见下节）。省略颜色循环切换；无参数显示当前值和用法。支持 green / blue / cyan / purple / amber / orange / pink / gray。
 - 仅当前会话的 aggregate 工具名及统计中的工具名称生效；已有工具行刷新并保留展开状态。reload 或新会话恢复默认，不修改已保存的 A/B 和 thinking 偏好。失败颜色仍优先，原生完整展开的 codemode 内容保持原样。
 - 使用明／暗两套颜色，不新增依赖或持久化设置。
 - 串行 Standards / Spec 自审无未解决问题。
@@ -106,3 +107,22 @@ CPU profile 中主要开销为 `truncateToWidth`、文字区域排版和隐藏�
 - `npm run check`：typecheck 与完整 67 项测试通过，包含旧配置兼容、已保存非默认颜色恢复、跨项目、reset 持久化及 A/B、thinking 互不覆盖。
 - `npm run test:display-tui`：真实 fullscreen reload 后报告已保存的 codemode 粉色与 Bash 蓝色，reset 恢复琥珀色；既有点击、A/B 和 thinking 回归通过。
 - 详细日志：`/tmp/pi-compact-global-colors-check.log`、`/tmp/pi-compact-global-colors-tui.log`。fullscreen 结果：`/var/folders/zh/qf_nccyd0_b0fc84rk8dl4lm0000gp/T/pi-compact-display-results-QLo12v/`。
+
+## 后续：统一 /tools 菜单与 off 风格
+
+- 起点 commit：`be3b227`（颜色偏好之后）。合并四项配置为单一 `/tools` 菜单，新增 `off` 风格。
+- 旧命令 `/tool-style`、`/tool-color`、`/codemode-view`、`/tool-thinking` 已删除，不保留别名。`/changes` 保持独立。
+- 菜单用 `SettingsList` 逐项打开 `SelectList` 选择器，不循环切换：风格尤其是破坏性的 `off`，不应在浏览选项时被中途应用。Esc 在选项层返回、在主菜单退出，均不修改设置。修改立即生效并保持菜单打开。
+- 非 aggregate 风格下，四项 aggregate 专属设置仍显示已保存值，但把 `submenu` 置空并追加「（仅 aggregate 可用）」。`SettingsList` 本身没有禁用态，因此这是纯提示，键盘仍可选中。
+- 保存范围：风格存于进程级 global，reload 与新会话保持，重启由 `--compact-style` 决定，不写入 preferences.json；其余四项继续写全局 preferences.json。
+- `off` 恢复原生渲染：内置工具与已适配自定义工具都读回原始 `renderShell` / `renderCall` / `renderResult`；跳过活动记录、thinking 装饰、结算统计和 Edit / Write / apply_patch 快照；进入 off 释放 UI patch、丢弃待结算快照并清除当前报告链接。工具执行、激活状态与 schema 不变。
+- 装饰器改为可逆视图：注册表用全局 `WeakMap` 同时记录被装饰和原始定义，TUI 适配因此能找到已适配自定义工具的原始 renderer。内置工具改为在 TUI 层临时装饰（`createDisplayTools(..., compactRendering = false)` + `adaptCustomTool(component, true)`）。
+
+验证：
+
+- `npm run check`：typecheck 与完整测试通过。`tests/menu.test.ts` 覆盖菜单打开、浏览选项不应用、Esc 丢弃、四项在非 aggregate 下写入 0 次、恢复 aggregate 后可改、以及 20/40/100 列不超宽。
+- `tests/off.test.ts` 覆盖 off 启动、双向实时切换、原生行与 assistant 输出恢复、工具执行不变、连续两次 reload。
+- `scripts/display-menu.exp` 为真实 fullscreen 菜单交互脚本。
+- 新增 `tests/helpers/menu.ts` 作为菜单驱动器；行 id 顺序（style、bashColor、codemodeColor、codemodeView、showThinking）在此与 `src/menu.ts` 各列一次，改动任一侧都要同步。
+
+`scripts/display-menu.exp` 的 `configure_display {row current target}` 同样按上述行序定位，选择器内用 `→` 前缀确认当前项，因此改动行序需要同时更新脚本与 `tests/helpers/menu.ts`。

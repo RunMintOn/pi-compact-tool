@@ -5,13 +5,14 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { constants } from "node:fs";
 import { access, mkdir, readFile, writeFile } from "node:fs/promises";
-import { decorateTool, type DisplayKind } from "./display.ts";
+import { builtInKinds, decorateTool, type BuiltInName, type DisplayKind } from "./display.ts";
 import type { ChangeTracker } from "./changes.ts";
 import { getDisplayStyle } from "./state.ts";
 
 type Settings = ReturnType<ExtensionAPI["getSettings"]>;
-const kinds = { read: "read", bash: "bash", edit: "edit", write: "write", grep: "search", find: "search", ls: "search" } as const satisfies Record<string, DisplayKind>;
-type BuiltInName = keyof typeof kinds;
+// The registered built-ins and their display kinds both come from display.ts, so
+// there is one name list to update when Pi adds a built-in tool.
+const kinds = builtInKinds;
 
 function official(name: BuiltInName, cwd: string, settings: Settings, changes?: ChangeTracker): ToolDefinition<any, any, any> {
   const trackedWrite = async (path: string, content: string) => {

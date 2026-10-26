@@ -394,8 +394,10 @@ export function renderActivitySummary(summary: ActivitySummary, theme: Theme, wi
   const change = summary.changes;
   const label = change?.url && contentWidth < 12 ? "Changes" : change?.label ?? "";
   const suffix = change?.url ? " " + hyperlink(`\x1b[4m${theme.fg("accent", label)}\x1b[24m`, change.url) : theme.fg("muted", label);
-  const statsSuffix = date + (!summary.calls && label ? " " + suffix.trimStart() : "");
-  const stats = new SummaryLine(theme.fg("muted", parts.join(" · ")), statsSuffix).render(contentWidth)[0] ?? "";
+  // Answer-only tasks have no calls/turns heading, so the date and change link
+  // ride on the statistics row instead of a second line.
+  const statsTail = date + (!summary.calls && label ? " " + suffix.trimStart() : "");
+  const stats = new SummaryLine(theme.fg("muted", parts.join(" · ")), statsTail).render(contentWidth)[0] ?? "";
   const first = new SummaryLine(heading, suffix).render(contentWidth)[0] ?? "";
   return ["", ...(summary.calls ? [first, stats] : [stats]).map(text => truncateToWidth(" ".repeat(outputPad) + truncateToWidth(text, contentWidth, "…"), width, "…"))];
 }
@@ -433,6 +435,8 @@ export function installActivityUI(projection: ActivityProjection, getTheme: () =
   function toolRender(this: ToolExecutionComponent, width: number): string[] {
     if (released) return originalToolRender.call(this, width);
     if (!adaptedTools.has(this)) {
+      // Built-ins are registered without compact rendering so `off` can hand back
+      // the untouched native definition; this is where they get the shell instead.
       const restore = adaptCustomTool(this, true);
       if (restore) adaptedTools.set(this, restore);
     }

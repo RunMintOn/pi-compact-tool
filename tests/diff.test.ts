@@ -84,7 +84,8 @@ test("hunks stay separate and keep their own numbering", () => {
   assert.equal(diff.blocks.length, 3, "three distant edits produce three hunks");
   assert.equal(diff.addedLines, 3);
   assert.equal(diff.deletedLines, 3);
-  assert.match(diff.blocks[0]!.header, /^@@ -\d+,\d+ \+\d+,\d+ @@$/);
+  assert.deepEqual(diff.blocks.map(block => [block.oldStartLine, block.newStartLine]), [[1, 1], [21, 21], [46, 46]]);
+  assert.ok(diff.blocks.every(block => block.oldLineCount > 0 && block.newLineCount > 0));
   assertRowsMatchFiles(before, after, "three hunks");
 });
 
@@ -93,4 +94,26 @@ test("a file with no newline at the end reports no marker row", () => {
   const rows = diff.blocks.flatMap(block => block.lines);
   assert.equal(rows.length, 3, "context, delete, insert only");
   assert.ok(rows.every(row => !row.content.startsWith("\\")));
+});
+
+test("the context window leaves room for the page's unchanged-line folding", () => {
+  // The page folds a context run longer than six lines, keeping two lines at each
+  // edge. jsdiff gives each side of a change at most `context` lines, so a change
+  // pair spaced further apart than twice the context lands in separate hunks and
+  // no run ever gets long enough to fold.
+  const spacing = 20;
+  const before = Array.from({ length: spacing * 3 }, (_, i) => `l${i}`).join("\n") + "\n";
+  const after = before.split("\n").map((line, i) => (i === 10 || i === 10 + spacing ? "X" : line)).join("\n");
+  const diff = diffFile("f", before, after);
+  assert.equal(diff.blocks.length, 1, "edits inside one context window stay one hunk");
+  const runs: number[] = [];
+  for (let i = 0; i < diff.blocks[0]!.lines.length;) {
+    if (diff.blocks[0]!.lines[i]!.type !== "context") { i++; continue; }
+    let end = i;
+    while (end < diff.blocks[0]!.lines.length && diff.blocks[0]!.lines[end]!.type === "context") end++;
+    runs.push(end - i);
+    i = end;
+  }
+  assert.ok(runs.some(run => run > 6), `a long unchanged run must survive, got ${runs.join(",")}`);
+  assertRowsMatchFiles(before, after, "foldable run");
 });

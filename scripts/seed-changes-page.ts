@@ -30,11 +30,19 @@ await writeFile(join(cwd, "NOTES.md"), [
   "| --- | --- |",
   "| left | old line |",
   "",
+  "- viewer",
+  "  - nested item",
+  "",
 ].join("\n"));
 tracker.start(cwd, Date.now() - 42000);
 tracker.userMessage({ content: [{ type: "text", text: "增加本轮修改查看功能。\n\n请保留完整的用户消息，不需要模型生成摘要。页面需要文件侧边栏、单栏和双栏切换、自动明暗主题，以及 Wrap lines。\n\n特殊内容也应按普通文字显示：<script>window.injected = true</script>\n\n" + "这是较长的需求说明，用于检查用户消息区域能否折叠，以及展开后完整阅读。\n".repeat(12) }] });
 await run("edit", { path: "activity.ts", edits: [
   { oldText: "export const metric2 = 2;", newText: "export const metric2 = 200;\nexport const changesLabel = 'View changes';" },
+  // Ten lines apart, so several edits land in one hunk with long unchanged runs
+  // between them: the shape the page folds. Two such runs in the same hunk are
+  // what proves each fold carries its own id.
+  { oldText: "export const metric12 = 12;", newText: "export const metric12 = 1200;" },
+  { oldText: "export const metric22 = 22;", newText: "export const metric22 = 2200;" },
   { oldText: "export const metric45 = 45;", newText: "export const metric45 = 450;" },
   { oldText: "export const metric110 = 110;", newText: "export const metric110 = 1100;" },
 ] });
@@ -42,6 +50,9 @@ await run("write", { path: "settings.json", content: '{\n  "theme": "auto",\n  "
 await run("edit", { path: "NOTES.md", edits: [
   { oldText: "The sidebar groups files by kind.", newText: "The sidebar splits files by kind." },
   { oldText: "| left | old line |", newText: "| left | old line |\n| right | new line |" },
+  // Indentation-only: diffWords() ignores whitespace and would render both sides
+  // identically with nothing marked, so this guards the whitespace-aware diff.
+  { oldText: "  - nested item", newText: "    - nested item" },
 ] });
 await run("write", { path: "新文件 <viewer>.ts", content: "export const welcome = '</script><script>window.injected = true</script>';\n" + "export const longMessage = '" + "This is a long line for checking side-by-side scrolling and line wrapping. ".repeat(20) + "';\n" });
 const report = (await tracker.finish(Date.now(), "completed"))!;

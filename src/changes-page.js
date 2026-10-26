@@ -104,13 +104,15 @@
   }
 
   // A report with only one kind gets no divider: one list split into one list is
-  // just noise.
+  // just noise. The document divider and the sidebar use the same table so a
+  // label can never disagree with the group it belongs to.
   const kinds = [
     { label: "Markdown", test: isMarkdown },
     { label: "Other", test: file => !isMarkdown(file) },
   ]
     .map(kind => ({ ...kind, members: order.filter(index => kind.test(report.files[index])) }))
     .filter(kind => kind.members.length);
+  const kindLabel = file => kinds.find(kind => kind.test(file))?.label ?? "Other";
   for (const kind of kinds) {
     if (kinds.length > 1) {
       const heading = document.createElement("div");
@@ -123,7 +125,9 @@
     }
     for (const index of kind.members) navigation.append(fileLink(report.files[index], index));
   }
-  let suppress = 0;
+  // A link click jumps to an anchor, and that jump fires scroll events. Ignore
+  // scroll-driven activation until this timestamp so the clicked file stays selected.
+  let scrollSyncPausedUntil = 0;
   function activate(index) {
     activeIndex = index;
     links.forEach((link, i) => {
@@ -132,10 +136,8 @@
       else link.removeAttribute("aria-current");
     });
   }
-  // A link click jumps to an anchor, and that jump fires scroll events. Ignore
-  // scroll-driven activation briefly so the clicked file stays selected.
   function activateFromClick(index) {
-    suppress = performance.now() + 250;
+    scrollSyncPausedUntil = performance.now() + 250;
     activate(index);
   }
   function closeFiles() {
@@ -186,7 +188,9 @@
         const before = deleted[k];
         const after = inserted[k];
         if (before && after) {
-          const parts = Diff.diffWords(lineText(before), lineText(after));
+          // Keep whitespace: diffWords ignores it, so a pure indentation change
+          // would render both sides identically and mark nothing.
+          const parts = Diff.diffWordsWithSpace(lineText(before), lineText(after));
           out.push({
             type: "change",
             old: { number: before.oldNumber, html: parts.filter(part => !part.added)
@@ -233,11 +237,13 @@
     `<tr class="fold"><td colspan="5"><div><span>${hidden} unchanged line${hidden === 1 ? "" : "s"}</span>` +
     `<span class="rule"></span><button type="button" data-fold="${id}">show</button></div></td></tr>`;
   // Hidden context rows stay in the DOM so expanding is a class toggle rather
-  // than a second render pass.
+  // than a second render pass. Each fold gets its own id: sharing one per hunk
+  // would make every toggle in that hunk open and close together.
   const foldedHTML = (row, id) => row.replace(/^<tr class="(\w+)"/, `<tr class="$1 folded" data-fold="${id}" hidden`);
 
   let layout = "unified";
   let hunkId = 0;
+  let foldId = 0;
   function hunkHTML(block) {
     const id = hunkId++;
     const all = pairs(block.lines);
@@ -254,15 +260,16 @@
       const run = all.slice(index, end);
       // Keep two lines against each edge so a hunk still shows where it sits.
       if (run.length > 6 && index > 0 && end < all.length) {
-        body += render(run[0]) + render(run[1]) + foldHTML(run.length - 4, id);
-        body += run.slice(2, -2).map(row => foldedHTML(render(row), id)).join("");
+        const fold = foldId++;
+        body += render(run[0]) + render(run[1]) + foldHTML(run.length - 4, fold);
+        body += run.slice(2, -2).map(row => foldedHTML(render(row), fold)).join("");
         body += render(run[run.length - 2]) + render(run[run.length - 1]);
       } else {
         body += run.map(render).join("");
       }
       index = end;
     }
-    const range = block.header.replace(/^@@\s*/, "").replace(/\s*@@.*$/, "");
+    const range = `-${block.oldStartLine},${block.oldLineCount} +${block.newStartLine},${block.newLineCount}`;
     const changes = block.lines.filter(line => line.type !== "context").length;
     return `<div class="hunk" id="hunk-${id}" data-changes="${changes}">` +
       `<span class="k">hunk</span><span class="h">${escape(range)}</span>` +
@@ -281,11 +288,12 @@
     const previousTop = document.getElementById(`file-${activeIndex}`)?.getBoundingClientRect().top;
     diffs.dataset.layout = layout;
     hunkId = 0;
+    foldId = 0;
     diffs.replaceChildren();
     let currentKind;
     for (const index of order) {
       const file = report.files[index];
-      const kind = isMarkdown(file) ? "Markdown" : "Other";
+      const kind = kindLabel(file);
       // Mirror the sidebar split in the document so the jump from prose to code
       // is announced instead of just happening.
       if (kinds.length > 1 && kind !== currentKind) {
@@ -398,7 +406,7 @@
     scheduled = true;
     requestAnimationFrame(() => {
       scheduled = false;
-      if (performance.now() < suppress) return;
+      if (performance.now() < scrollSyncPausedUntil) return;
       markPosition();
       const sections = [...diffs.querySelectorAll(".file-section")];
       if (!sections.length) return;

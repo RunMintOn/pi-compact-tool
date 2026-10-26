@@ -4,6 +4,7 @@ import { ToolExecutionComponent, initTheme, type ToolDefinition, type Theme } fr
 import { Text, stripTerminalSequences, visibleWidth, type TuiMouseEvent } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { ActivityProjection, installActivityUI } from "../src/activity.ts";
+import { decorateTool } from "../src/display.ts";
 import { resetDisplayState, setDisplayStyle, setCodemodeView } from "../src/state.ts";
 
 initTheme("dark", false);
@@ -116,9 +117,21 @@ test("large native apply_patch details stay complete and repeated frames reuse t
     row.setExpanded(true);
     const initial = row.render(120);
     assert.equal((plain(initial).match(/native diff row/g) ?? []).length, 4000);
-    const started = performance.now();
     for (let i = 0; i < 5; i++) assert.deepEqual(row.render(120), initial);
-    assert.ok(performance.now() - started < 100, "five warm frames should not repaint 4000 native rows");
+    // No wall-clock budget is asserted here. A loaded machine can starve even a
+    // cached frame, so the cache contract is what this test checks: through a
+    // shell driven by this test's own render context, a hit returns the same
+    // array instance and invalidate() forces a new one.
+    const decorated = decorateTool({ ...custom("apply_patch"), renderResult: () => new Text("body", 0, 0) } as ToolDefinition<any>, { kind: "edit" });
+    const context: any = { state: {}, toolCallId: "cache", isPartial: false, executionStarted: true, isError: false, args: {} };
+    const shell = decorated.renderCall!({ patch: "*** Update File: cache.ts" }, theme, context) as unknown as {
+      result(text: string, body?: unknown): void; render(width: number): string[]; invalidate(): void;
+    };
+    shell.result("summary", new Text(body, 0, 0));
+    const warm = shell.render(120);
+    assert.equal(shell.render(120), warm, "a warm frame must reuse the cached rows");
+    shell.invalidate();
+    assert.notEqual(shell.render(120), warm, "invalidating must force a repaint");
     row.invalidate();
     assert.deepEqual(row.render(120), initial);
     for (const width of [40, 120]) {

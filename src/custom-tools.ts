@@ -1,8 +1,9 @@
 import type { Theme, ToolDefinition, ToolExecutionComponent } from "@earendil-works/pi-coding-agent";
 import { type Component, truncateToWidth } from "@earendil-works/pi-tui";
-import { decorateTool, getToolDecoration, type DisplayAdapter } from "./display.ts";
+import { builtInKinds, decorateTool, getToolDecoration, type DisplayAdapter } from "./display.ts";
 import { transcriptPadding } from "./activity.ts";
 import { firstLine, lineCount, panelLine, plural, textOutput } from "./render-utils.ts";
+import { patchOperations } from "./patch.ts";
 import { getDisplayPreferences, getDisplayStyle } from "./state.ts";
 
 function adapter(name: string): DisplayAdapter | undefined {
@@ -11,11 +12,10 @@ function adapter(name: string): DisplayAdapter | undefined {
     kind: "edit",
     target: args => {
       const targets: string[] = [];
-      for (const line of String(args.patch ?? "").split(/\r?\n/)) {
-        const file = /^\*\*\* (?:Add|Update|Delete) File: (.+)$/.exec(line);
-        if (file) targets.push(file[1]!);
-        const move = /^\*\*\* Move to: (.+)$/.exec(line);
-        if (move && targets.length) targets[targets.length - 1] += ` → ${move[1]}`;
+      for (const operation of patchOperations(String(args.patch ?? ""))) {
+        if (operation.op === "move") {
+          if (targets.length) targets[targets.length - 1] += ` → ${operation.path}`;
+        } else targets.push(operation.path);
       }
       return targets.join(", ") || "…";
     },
@@ -76,8 +76,14 @@ function nativePanel(component: Component, theme: Theme, pending: boolean, calls
   };
 }
 
-/** Replace only a TUI component's definition, never the registered/executing tool. */
-export function adaptCustomTool(component: ToolExecutionComponent, includeBuiltIns = false): (() => void) | undefined {
+/**
+ * Replace only a TUI component's definition, never the registered/executing tool.
+ *
+ * `adaptUnregisteredBuiltIns` covers the built-ins this extension registers with
+ * `compactRendering` off: they carry no adapter of their own, so they are given
+ * the generic shell here instead of at registration time.
+ */
+export function adaptCustomTool(component: ToolExecutionComponent, adaptUnregisteredBuiltIns = false): (() => void) | undefined {
   type Native = {
     toolName: string;
     toolDefinition?: ToolDefinition<any>;
@@ -90,8 +96,11 @@ export function adaptCustomTool(component: ToolExecutionComponent, includeBuiltI
   };
   const native = component as unknown as Native;
   const decoration = native.toolDefinition && getToolDecoration(native.toolDefinition);
-  const displayAdapter = decoration?.adapter ?? adapter(native.toolName) ??
-    (includeBuiltIns && ["read", "bash", "edit", "write", "grep", "find", "ls"].includes(native.toolName) ? {} : undefined);
+  // Built-ins that this extension registers itself carry no adapter of their own;
+  // they get the generic shell when adapted in the TUI layer. The name list lives
+  // in display.ts so it cannot drift from the registered built-ins.
+  const isBuiltIn = adaptUnregisteredBuiltIns && native.toolName in builtInKinds;
+  const displayAdapter = decoration?.adapter ?? adapter(native.toolName) ?? (isBuiltIn ? {} : undefined);
   const original = decoration?.original ?? native.toolDefinition;
   if (!displayAdapter || !original) return undefined;
   const decorated = decorateTool({ ...original, name: native.toolName },

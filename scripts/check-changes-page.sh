@@ -35,7 +35,7 @@ assert.equal(results.at(-1).result.files, 4);
 assert.deepEqual(results.at(-1).result.kinds, ["Markdown· 1", "Other· 3"]);
 // Markdown leads the list even though it sorts last by path.
 assert.equal(results.at(-1).result.firstFile, "NOTES.md");
-assert.match(results.at(-1).result.metadata, /^4 files · \+10 −6 · /);
+assert.match(results.at(-1).result.metadata, /^4 files · \+13 −9 · /);
 assert.equal(results.at(-1).result.injected, false);
 assert.equal(results.at(-1).result.overflow, false);
 await page.screenshot({ path: `${directory}/light-unified.png` });
@@ -83,6 +83,46 @@ assert.equal(results.at(-1).result.nowrap, true);
 assert.equal(results.at(-1).result.pageOverflow, false);
 assert.equal(results.at(-1).result.scroller, "auto");
 await page.click("loc=css:#wrap-lines");
+
+// Long unchanged stretches fold, and each fold toggles on its own. Sharing one
+// id per hunk would open every fold in that hunk at once.
+record("folds are independent", await page.evaluate(() => {
+  const buttons = [...document.querySelectorAll("tr.fold button")];
+  const ids = buttons.map(button => button.dataset.fold);
+  const first = buttons[0];
+  const own = first?.dataset.fold;
+  first?.click();
+  const open = [...document.querySelectorAll(`tr.folded[data-fold="${own}"]`)].every(row => !row.hidden);
+  const othersClosed = buttons.slice(1).every(button =>
+    [...document.querySelectorAll(`tr.folded[data-fold="${button.dataset.fold}"]`)].every(row => row.hidden));
+  return { count: buttons.length, unique: new Set(ids).size === ids.length, open, othersClosed, label: first?.textContent };
+}));
+assert.ok(results.at(-1).result.count >= 2, "the fixture needs more than one foldable run");
+assert.equal(results.at(-1).result.unique, true, "each fold needs its own id");
+assert.equal(results.at(-1).result.open, true, "clicking a fold must reveal its own rows");
+assert.equal(results.at(-1).result.othersClosed, true, "clicking a fold must not reveal other folds");
+assert.equal(results.at(-1).result.label, "hide");
+
+// A pure indentation change has no differing words, so it must be caught by the
+// whitespace-aware diff instead of rendering both sides identically.
+record("indentation change is marked", await page.evaluate(() => {
+  // Unified prints the two sides as separate rows, split prints them as two
+  // cells, so collect by content instead of by row shape.
+  const cells = [...document.querySelectorAll("#diffs td.content")]
+    .filter(cell => cell.textContent.includes("nested item"));
+  const texts = cells.map(cell => cell.textContent);
+  return {
+    cells: cells.length,
+    marked: cells.reduce((sum, cell) => sum + cell.querySelectorAll("i.hl-d, i.hl-i").length, 0),
+    old: texts.find(text => text.startsWith("  - nested item")) ?? "",
+    next: texts.find(text => text.startsWith("    - nested item")) ?? "",
+  };
+}));
+assert.equal(results.at(-1).result.cells, 2, "both sides of the indentation change must render");
+assert.ok(results.at(-1).result.marked >= 2, "an indentation-only change must mark the whitespace on both sides");
+assert.equal(results.at(-1).result.old.startsWith("  - nested item"), true);
+assert.equal(results.at(-1).result.next.startsWith("    - nested item"), true);
+
 
 // Change navigation walks hunks, not files: one document can hold several.
 const hunkState = () => page.evaluate(() => ({

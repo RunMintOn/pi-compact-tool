@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, open, realpath, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { diffFile, type FileDiff } from "./diff.ts";
+import { patchOperations } from "./patch.ts";
 import { renderChangesPage } from "./changes-page.ts";
 
 export const MAX_SNAPSHOT_BYTES = 1024 * 1024;
@@ -95,9 +96,8 @@ export class ChangeTracker {
   }
   async capturePatchBefore(patch: string, cwd: string): Promise<void> {
     // Include both ends of a move, even if applying the patch later fails.
-    for (const line of patch.split(/\r?\n/)) {
-      const file = /^\*\*\* (?:(?:Add|Update|Delete) File|Move to): (.+)$/.exec(line.trimEnd());
-      if (file) await this.captureBefore(resolve(cwd, file[1]!));
+    for (const operation of patchOperations(patch)) {
+      await this.captureBefore(resolve(cwd, operation.path));
     }
   }
   patchFailed(): void {

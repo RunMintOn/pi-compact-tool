@@ -4,19 +4,64 @@ import { getDisplayPreferences, getDisplayStyle, toolColorNames, type DisplayPre
 
 export const displayStyles: DisplayStyle[] = ["aggregate", "tidy", "claude", "off"];
 
+/**
+ * One row of the display menu. Declaring the options, how to read the current
+ * value and how to save a new one together keeps the id from being switched on
+ * twice (once to render, once to save) and keeps the row order in one place.
+ */
+interface MenuRow {
+  id: string;
+  label: string;
+  description: string;
+  options: string[];
+  aggregateOnly: boolean;
+  current: () => string;
+  save: (value: string) => Promise<void>;
+}
+
 export async function openDisplayMenu(
   ctx: ExtensionContext,
   changeStyle: (style: DisplayStyle) => Promise<void>,
   changePreferences: (patch: Partial<DisplayPreferences>) => Promise<void>,
 ): Promise<void> {
   await ctx.ui.custom<void>((tui, theme, _kb, done) => {
-    const items: SettingItem[] = [
-      { id: "style", label: "展示风格", currentValue: "", description: "aggregate 聚合 · tidy 短摘要 · claude Claude 风格 · off 原生展示" },
-      { id: "bashColor", label: "Bash 颜色", currentValue: "", description: "默认 blue（蓝色）。选择 blue 即可恢复默认。" },
-      { id: "codemodeColor", label: "Codemode 颜色", currentValue: "", description: "默认 amber（琥珀色）。选择 amber 即可恢复默认。" },
-      { id: "codemodeView", label: "Codemode 展示", currentValue: "", description: "compact 单行摘要；calls 摘要加完整原生嵌套调用。" },
-      { id: "showThinking", label: "已结束的思考", currentValue: "", description: "隐藏时仍显示当前正在生成的思考，不修改模型设置或消息内容。" },
+    const colorOptions = [...toolColorNames];
+    const rows: MenuRow[] = [
+      {
+        id: "style", label: "展示风格", aggregateOnly: false,
+        description: "aggregate 聚合 · tidy 短摘要 · claude Claude 风格 · off 原生展示",
+        options: displayStyles,
+        current: () => getDisplayStyle(),
+        save: style => changeStyle(style as DisplayStyle),
+      },
+      {
+        id: "bashColor", label: "Bash 颜色", aggregateOnly: true, options: colorOptions,
+        description: "默认 blue（蓝色）。选择 blue 即可恢复默认。",
+        current: () => getDisplayPreferences().bashColor,
+        save: value => changePreferences({ bashColor: value as DisplayPreferences["bashColor"] }),
+      },
+      {
+        id: "codemodeColor", label: "Codemode 颜色", aggregateOnly: true, options: colorOptions,
+        description: "默认 amber（琥珀色）。选择 amber 即可恢复默认。",
+        current: () => getDisplayPreferences().codemodeColor,
+        save: value => changePreferences({ codemodeColor: value as DisplayPreferences["codemodeColor"] }),
+      },
+      {
+        id: "codemodeView", label: "Codemode 展示", aggregateOnly: true, options: ["compact", "calls"],
+        description: "compact 单行摘要；calls 摘要加完整原生嵌套调用。",
+        current: () => getDisplayPreferences().codemodeView,
+        save: value => changePreferences({ codemodeView: value as DisplayPreferences["codemodeView"] }),
+      },
+      {
+        id: "showThinking", label: "已结束的思考", aggregateOnly: true, options: ["显示", "隐藏"],
+        description: "隐藏时仍显示当前正在生成的思考，不修改模型设置或消息内容。",
+        current: () => (getDisplayPreferences().showThinking ? "显示" : "隐藏"),
+        save: value => changePreferences({ showThinking: value === "显示" }),
+      },
     ];
+    const items: SettingItem[] = rows.map(row => ({
+      id: row.id, label: row.label, currentValue: "", description: row.description,
+    }));
     let saving = false;
     const choices = (values: string[]): SettingItem["submenu"] => (current, finish) => {
       const select = new SelectList(values.map(value => ({ value, label: value })), values.length, getSelectListTheme());
@@ -26,33 +71,24 @@ export async function openDisplayMenu(
       return select;
     };
     const sync = () => {
-      const preferences = getDisplayPreferences();
       const aggregate = getDisplayStyle() === "aggregate";
-      for (const item of items) {
-        if (item.id === "style") {
-          item.currentValue = getDisplayStyle();
-          // A picker avoids applying intermediate styles, especially destructive off.
-          item.submenu = choices(displayStyles);
-          continue;
-        }
-        const value = item.id === "showThinking" ? (preferences.showThinking ? "显示" : "隐藏") : preferences[item.id as keyof DisplayPreferences] as string;
-        item.currentValue = aggregate ? value : `${value}（仅 aggregate 可用）`;
-        item.submenu = !aggregate ? undefined : choices(item.id === "showThinking" ? ["显示", "隐藏"]
-          : item.id === "codemodeView" ? ["compact", "calls"] : [...toolColorNames]);
-      }
+      rows.forEach((row, index) => {
+        const item = items[index]!;
+        const value = row.current();
+        item.currentValue = row.aggregateOnly && !aggregate ? `${value}（仅 aggregate 可用）` : value;
+        // SettingsList has no disabled state, so an aggregate-only row is marked
+        // in its value text and simply has no picker to open.
+        item.submenu = row.aggregateOnly && !aggregate ? undefined : choices(row.options);
+      });
     };
     sync();
     const list = new SettingsList(items, items.length, getSettingsListTheme(), async (id, value) => {
+      const row = rows.find(candidate => candidate.id === id);
+      if (!row) return;
       saving = true;
       tui.requestRender();
       try {
-        if (id === "style") await changeStyle(value as DisplayStyle);
-        else if (id === "showThinking") await changePreferences({ showThinking: value === "显示" });
-        else if (id === "codemodeView") await changePreferences({ codemodeView: value as DisplayPreferences["codemodeView"] });
-        else {
-          const key = id as "bashColor" | "codemodeColor";
-          await changePreferences({ [key]: value });
-        }
+        await row.save(value);
       } finally {
         saving = false;
         sync();
