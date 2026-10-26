@@ -2,3 +2,10 @@ node_modules/
 reference-2/
 .pi/
 *.tsbuildinfo
+
+# Scratch material: design exploration artifacts and one-off probes. Kept on disk
+# for reference, not part of the package or the test run.
+.scratch/diff-ui-directions/
+.scratch/**/*.png
+.scratch/**/*.json
+.scratch/**/*.log

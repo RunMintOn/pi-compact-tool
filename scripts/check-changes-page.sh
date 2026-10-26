@@ -21,19 +21,36 @@ await page.cdp("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color
 await page.goto(fixture.url);
 await page.waitForSelector("#diffs .file-section");
 record("initial", await page.evaluate(() => ({
-  format: document.querySelector("#diffs").dataset.format,
+  layout: document.querySelector("#diffs").dataset.layout,
   files: document.querySelectorAll(".file-link").length,
+  kinds: [...document.querySelectorAll(".kind")].map(kind => kind.textContent),
+  firstFile: document.querySelector(".file-link .file-name")?.textContent,
   metadata: document.querySelector("#metadata").textContent,
   injected: Boolean(window.injected),
   overflow: document.documentElement.scrollWidth > innerWidth,
 })));
-assert.equal(results.at(-1).result.format, "side-by-side");
-assert.equal(results.at(-1).result.files, 3);
-assert.match(results.at(-1).result.metadata, /3 changed files · \+8 −5/);
+assert.equal(results.at(-1).result.layout, "unified");
+assert.equal(results.at(-1).result.files, 4);
+// The seed mixes markdown with other files, so the sidebar splits in two.
+assert.deepEqual(results.at(-1).result.kinds, ["Markdown· 1", "Other· 3"]);
+// Markdown leads the list even though it sorts last by path.
+assert.equal(results.at(-1).result.firstFile, "NOTES.md");
+assert.match(results.at(-1).result.metadata, /^4 files · \+10 −6 · /);
 assert.equal(results.at(-1).result.injected, false);
 assert.equal(results.at(-1).result.overflow, false);
-await page.screenshot({ path: `${directory}/light-split.png` });
+await page.screenshot({ path: `${directory}/light-unified.png` });
 console.log(await page.snapshot());
+
+// A changed paragraph marks only the words that moved instead of the whole line,
+// and the source text stays verbatim.
+record("word level marks", await page.evaluate(() => ({
+  marked: document.querySelectorAll("#file-0 .hl-i").length,
+  removed: document.querySelectorAll("#file-0 .hl-d").length,
+  keepsSource: [...document.querySelectorAll("#file-0 td.content")].some(cell => cell.textContent.includes("export const metric2")),
+})));
+assert.ok(results.at(-1).result.marked > 0);
+assert.ok(results.at(-1).result.removed > 0);
+assert.equal(results.at(-1).result.keepsSource, true);
 
 await page.click("loc=css:#user-messages summary");
 record("full user message", await page.evaluate(() => ({
@@ -48,55 +65,101 @@ assert.match(results.at(-1).result.text, /这是较长的需求说明/);
 assert.ok(results.at(-1).result.height <= 260);
 assert.equal(results.at(-1).result.injected, false);
 await page.click("loc=css:#user-messages summary");
-await page.click('loc=css:a[href="#file-2"]');
-await page.waitForFunction(() => document.querySelector('[aria-current="true"]')?.getAttribute("href") === "#file-2");
-await page.click("loc=css:#wrap-lines");
-record("wrapped split", await page.evaluate(() => ({
-  selected: document.querySelector('[aria-current="true"]').getAttribute("href"),
-  top: document.querySelector("#file-2").getBoundingClientRect().top,
-  panes: [...document.querySelectorAll("#file-2 .d2h-file-side-diff")].map(pane => ({ width: pane.clientWidth, scroll: pane.scrollWidth })),
-  wrapping: getComputedStyle(document.querySelector("#file-2 .d2h-code-line-ctn")).whiteSpace,
-})));
-assert.equal(results.at(-1).result.selected, "#file-2");
-assert.equal(results.at(-1).result.wrapping, "pre-wrap");
-assert.ok(results.at(-1).result.panes.every(pane => pane.scroll <= pane.width + 1));
-await page.click('loc=css:button[data-layout="unified"]');
-record("layout preserves position", await page.evaluate(() => ({
-  format: document.querySelector("#diffs").dataset.format,
-  selected: document.querySelector('[aria-current="true"]').getAttribute("href"),
-  top: document.querySelector("#file-2").getBoundingClientRect().top,
-  wrap: document.querySelector("#diffs").classList.contains("wrap-lines"),
-})));
-assert.equal(results.at(-1).result.format, "line-by-line");
-assert.equal(results.at(-1).result.selected, "#file-2");
-assert.ok(Math.abs(results.at(-1).result.top - results.at(-2).result.top) < 3);
-assert.equal(results.at(-1).result.wrap, true);
-await page.cdp("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: "dark" }] });
-record("dark theme", await page.evaluate(() => getComputedStyle(document.body).backgroundColor));
-assert.equal(results.at(-1).result, "rgb(20, 23, 29)");
-await page.screenshot({ path: `${directory}/dark-unified-wrap.png` });
 
-await page.click('loc=css:button[data-layout="auto"]');
+// Wrapping is on by default; turning it off must not create page-level overflow.
+record("wrap toggle", await page.evaluate(() => ({
+  on: !document.querySelector("#diffs").classList.contains("nowrap"),
+  whiteSpace: getComputedStyle(document.querySelector("#file-0 td.content")).whiteSpace,
+})));
+assert.equal(results.at(-1).result.on, true);
+assert.equal(results.at(-1).result.whiteSpace, "pre-wrap");
+await page.click("loc=css:#wrap-lines");
+record("nowrap scrolls inside the hunk", await page.evaluate(() => ({
+  nowrap: document.querySelector("#diffs").classList.contains("nowrap"),
+  pageOverflow: document.documentElement.scrollWidth > innerWidth,
+  scroller: getComputedStyle(document.querySelector("#file-0 .scroll")).overflowX,
+})));
+assert.equal(results.at(-1).result.nowrap, true);
+assert.equal(results.at(-1).result.pageOverflow, false);
+assert.equal(results.at(-1).result.scroller, "auto");
+await page.click("loc=css:#wrap-lines");
+
+// Change navigation walks hunks, not files: one document can hold several.
+const hunkState = () => page.evaluate(() => ({
+  position: document.getElementById("position").textContent,
+  current: [...document.querySelectorAll(".hunk")].findIndex(hunk => hunk.dataset.current === "true"),
+  top: Math.round(document.querySelector('.hunk[data-current="true"]')?.getBoundingClientRect().top ?? -1),
+}));
+record("change navigation", await hunkState());
+assert.match(results.at(-1).result.position, /^\d+ \/ \d+$/);
+const totalHunks = Number(results.at(-1).result.position.split("/")[1].trim());
+assert.ok(totalHunks > 1, "fixture has several hunks");
+await page.click("loc=css:#next-change");
+await page.waitForFunction(() => [...document.querySelectorAll(".hunk")].some(h => h.dataset.current === "true"));
+record("next change", await hunkState());
+assert.equal(results.at(-1).result.current, 0);
+// The hunk header lands just below the sticky bar, not underneath it.
+assert.ok(results.at(-1).result.top >= 40 && results.at(-1).result.top <= 62);
+await page.click("loc=css:#next-change");
+await page.waitForFunction(() => document.querySelectorAll('.hunk[data-current="true"]')[0] === document.querySelectorAll(".hunk")[1]);
+record("second change", await hunkState());
+assert.equal(results.at(-1).result.current, 1);
+await page.keyboard.press("j");
+await page.waitForFunction(() => document.querySelectorAll('.hunk[data-current="true"]')[0] === document.querySelectorAll(".hunk")[2]);
+record("j advances", await hunkState());
+assert.equal(results.at(-1).result.current, 2);
+await page.keyboard.press("k");
+await page.waitForFunction(() => document.querySelectorAll('.hunk[data-current="true"]')[0] === document.querySelectorAll(".hunk")[1]);
+record("k retreats", await hunkState());
+assert.equal(results.at(-1).result.current, 1);
+
+// Navigate to the last file by display order, not by index.
+const lastHref = await page.evaluate(() => [...document.querySelectorAll(".file-link")].at(-1).getAttribute("href"));
+await page.click(`loc=css:a[href="${lastHref}"]`);
+await page.waitForFunction(href => document.querySelector('[aria-current="true"]')?.getAttribute("href") === href, lastHref);
+await page.click('loc=css:button[data-layout="split"]');
+record("split keeps position", await page.evaluate(href => ({
+  layout: document.querySelector("#diffs").dataset.layout,
+  selected: document.querySelector('[aria-current="true"]').getAttribute("href"),
+  // A context row carries one cell per side plus the gutter, so four cells mean
+  // both columns rendered.
+  columns: document.querySelectorAll("#file-0 tr.context td.content").length,
+  gutter: document.querySelectorAll("#file-0 tr.context td.gutter").length,
+}), lastHref));
+assert.equal(results.at(-1).result.layout, "split");
+assert.equal(results.at(-1).result.selected, lastHref);
+assert.ok(results.at(-1).result.columns >= 4, "split renders both sides of a context row");
+assert.ok(results.at(-1).result.gutter > 0, "split draws the divider gutter");
+await page.screenshot({ path: `${directory}/light-split.png` });
+
+await page.cdp("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: "dark" }] });
+record("dark theme", await page.evaluate(() => ({
+  page: getComputedStyle(document.body).backgroundColor,
+  scheme: getComputedStyle(document.documentElement).colorScheme,
+})));
+assert.equal(results.at(-1).result.scheme, "dark");
+assert.notEqual(results.at(-1).result.page, "rgb(255, 255, 255)");
+await page.screenshot({ path: `${directory}/dark-split.png` });
+
+await page.click('loc=css:button[data-layout="unified"]');
 await viewport(600);
-await page.waitForFunction(() => document.querySelector("#diffs").dataset.format === "line-by-line");
-record("narrow auto", await page.evaluate(() => ({
+await page.waitForFunction(() => document.querySelector('button[data-layout="split"]').disabled);
+record("narrow unified", await page.evaluate(() => ({
   sidebar: getComputedStyle(document.querySelector("#sidebar")).display,
   overflow: document.documentElement.scrollWidth > innerWidth,
-  format: document.querySelector("#diffs").dataset.format,
+  splitDisabled: document.querySelector('button[data-layout="split"]').disabled,
 })));
 assert.equal(results.at(-1).result.sidebar, "none");
 assert.equal(results.at(-1).result.overflow, false);
+assert.equal(results.at(-1).result.splitDisabled, true);
 await page.click("loc=css:#files-toggle");
 await page.click('loc=css:a[href="#file-1"]');
 await page.waitForFunction(() => !document.body.classList.contains("files-open") && document.querySelector('[aria-current="true"]')?.getAttribute("href") === "#file-1");
 await page.screenshot({ path: `${directory}/narrow-unified.png` });
-await page.click('loc=css:button[data-layout="split"]');
-await viewport(640);
-assert.equal(await page.evaluate(() => document.querySelector("#diffs").dataset.format), "side-by-side");
-await page.click('loc=css:button[data-layout="auto"]');
 await viewport(1600);
-await page.waitForFunction(() => document.querySelector("#diffs").dataset.format === "side-by-side");
-record("manual override and auto restore", "passed");
+await page.waitForFunction(() => !document.querySelector('button[data-layout="split"]').disabled);
+record("split re-enabled", "passed");
+
 await fs.writeFile(`${directory}/results.json`, JSON.stringify(results, null, 2));
 console.log({ passed: results.length, artifacts: directory, report: fixture.url });
 await task.finish({ keep: [] });

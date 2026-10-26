@@ -4,19 +4,16 @@ import { dirname, join } from "node:path";
 import type { ChangeReport } from "./changes.ts";
 
 const require = createRequire(import.meta.url);
-const vendorRequire = createRequire(require.resolve("diff2html"));
 let assets: { css: string; library: string; app: string; notices: string } | undefined;
 
 export function renderChangesPage(report: ChangeReport): string {
   assets ??= {
-    css: readFileSync(require.resolve("diff2html/bundles/css/diff2html.min.css"), "utf8") + "\n" + readFileSync(new URL("./changes-page.css", import.meta.url), "utf8"),
-    library: readFileSync(require.resolve("diff2html/bundles/js/diff2html.min.js"), "utf8"),
+    css: readFileSync(new URL("./changes-page.css", import.meta.url), "utf8"),
+    // diffWords() pairs the removed and inserted text of a changed paragraph so
+    // only the words that moved are marked. The rest of the page is plain DOM.
+    library: readFileSync(join(dirname(require.resolve("diff/package.json")), "dist", "diff.min.js"), "utf8"),
     app: readFileSync(new URL("./changes-page.js", import.meta.url), "utf8"),
-    notices: [
-      "diff2html\n" + readFileSync(require.resolve("diff2html/LICENSE.md"), "utf8"),
-      "jsdiff\n" + readFileSync(join(dirname(vendorRequire.resolve("diff/package.json")), "LICENSE"), "utf8"),
-      "Hogan · Copyright 2011 Twitter, Inc.\n" + readFileSync(vendorRequire.resolve("@profoundlogic/hogan/LICENSE"), "utf8"),
-    ].join("\n\n"),
+    notices: "jsdiff\n" + readFileSync(join(dirname(require.resolve("diff/package.json")), "LICENSE"), "utf8"),
   };
   const data = JSON.stringify(report).replace(/</g, "\\u003c").replace(/>/g, "\\u003e").replace(/&/g, "\\u0026");
   return `<!doctype html>
@@ -29,29 +26,36 @@ export function renderChangesPage(report: ChangeReport): string {
 </head>
 <!-- Bundled library notices\n${assets.notices.replace(/--/g, "- -")} -->
 <body>
-<header class="report-header">
-  <div class="heading"><h1>Task changes</h1><span id="outcome" class="badge"></span></div>
-  <div id="metadata" class="metadata"></div>
-  <p class="scope">Net changes in files touched by Edit / Write / apply_patch. Other file operations are not tracked.</p>
-  ${report.incomplete ? '<p id="incomplete-notice" class="notice" role="status">Records may be incomplete: an apply_patch call failed or was interrupted. Only observed file changes are shown.</p>' : ""}
-  <details id="user-messages"><summary>User message</summary><div id="prompts"></div></details>
+<header class="bar">
+  <span class="brand">task changes</span>
+  <span id="outcome" class="outcome"></span>
+  <span id="metadata" class="meta"></span>
+  <span class="position" id="position" aria-live="polite"></span>
+  <div class="controls">
+    <div class="segmented" role="group" aria-label="Change navigation">
+      <button type="button" id="prev-change" title="Previous change (k)" aria-label="Previous change">↑</button>
+      <button type="button" id="next-change" title="Next change (j)" aria-label="Next change">↓</button>
+    </div>
+    <button id="files-toggle" type="button" aria-expanded="false" aria-controls="sidebar">Files</button>
+    <div class="segmented" role="group" aria-label="Diff layout">
+      <button type="button" data-layout="unified" aria-pressed="true">Unified</button>
+      <button type="button" data-layout="split" aria-pressed="false">Split</button>
+    </div>
+    <label class="wrap"><input id="wrap-lines" type="checkbox" checked> wrap</label>
+  </div>
 </header>
 <div class="layout">
-  <aside id="sidebar"><h2>Files <span id="file-count"></span></h2><nav id="file-list" aria-label="Changed files"></nav></aside>
+  <aside id="sidebar">
+    <div class="aside-head"><h2>Files</h2><span id="file-count"></span></div>
+    <nav id="file-list" aria-label="Changed files"></nav>
+  </aside>
   <main id="main">
-    <div class="toolbar">
-      <button id="files-toggle" type="button" aria-expanded="false" aria-controls="sidebar">Files</button>
-      <div class="layout-buttons" role="group" aria-label="Diff layout">
-        <button type="button" data-layout="auto" aria-pressed="true">Auto</button>
-        <button type="button" data-layout="split" aria-pressed="false">Split</button>
-        <button type="button" data-layout="unified" aria-pressed="false">Unified</button>
-      </div>
-      <label class="wrap-toggle"><input id="wrap-lines" type="checkbox"> Wrap lines</label>
-    </div>
+    ${report.incomplete ? '<p id="incomplete-notice" class="notice" role="status">Records may be incomplete: an apply_patch call failed or was interrupted. Only observed file changes are shown.</p>' : ""}
+    <details id="user-messages" class="prompt"><summary>User message</summary><div id="prompts"></div></details>
     <div id="diffs"></div>
+    <footer>Net changes in files touched by Edit / Write / apply_patch. Other file operations are not tracked.</footer>
   </main>
 </div>
-<footer>Generated locally by pi-compact-tool · Diff rendering by diff2html (MIT)</footer>
 <script id="report-data" type="application/json">${data}</script>
 <script>${assets.library.replace(/<\/script/gi, "<\\/script")}</script>
 <script>${assets.app}</script>

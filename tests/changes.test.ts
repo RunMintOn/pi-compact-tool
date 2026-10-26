@@ -112,7 +112,8 @@ test("self-contained report saves full prompts without allowing HTML injection o
   assert.equal(report!.added, 1);
   const html = renderChangesPage(report!);
   assert.ok(html.includes('id="report-data"'));
-  assert.ok(html.includes("Diff2Html"));
+  // The page ships its word-diff runtime inline; no external script or stylesheet.
+  assert.match(html, /exports\.diffWords/);
   assert.doesNotMatch(html, /<script>window\.injected/);
   assert.doesNotMatch(html, /<script[^>]+src=|<link[^>]+href=/);
   const data = JSON.parse(html.match(/<script id="report-data" type="application\/json">([\s\S]*?)<\/script>/)![1]!);
