@@ -1,9 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, open, realpath, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { generateUnifiedPatch } from "@earendil-works/pi-coding-agent";
-import { parse } from "diff2html";
-import type { DiffFile } from "diff2html/lib/types.js";
+import { diffFile, type FileDiff } from "./diff.ts";
 import { renderChangesPage } from "./changes-page.ts";
 
 export const MAX_SNAPSHOT_BYTES = 1024 * 1024;
@@ -14,7 +12,7 @@ export interface ChangedFile {
   status: "Added" | "Modified" | "Deleted" | "Unavailable";
   added: number;
   deleted: number;
-  diff?: DiffFile;
+  diff?: FileDiff;
   notice?: string;
 }
 export interface ChangeReport {
@@ -70,11 +68,9 @@ function fileChange(path: string, before: Snapshot, after: Snapshot): ChangedFil
   const notice = [before.notice && `Before: ${before.notice}`, after.notice && `After: ${after.notice}`].filter(Boolean).join(" ");
   if (notice) return { path, status: "Unavailable", added: 0, deleted: 0, notice };
   if (before.exists === after.exists && before.content === after.content) return undefined;
-  // Parse a neutral filename, then attach the real name as data. Tabs/newlines in
-  // user paths must not be interpreted as patch headers.
-  const diff = parse(generateUnifiedPatch("snapshot", before.content, after.content))[0]!;
-  diff.oldName = path; diff.newName = path;
-  diff.isNew = !before.exists; diff.isDeleted = !after.exists;
+  // The patch is built from a neutral filename so tabs or newlines in a user path
+  // can never be read as patch headers; the real path is carried as data.
+  const diff = diffFile(path, before.content, after.content);
   return {
     path, status: !before.exists ? "Added" : !after.exists ? "Deleted" : "Modified",
     added: diff.addedLines, deleted: diff.deletedLines, diff,

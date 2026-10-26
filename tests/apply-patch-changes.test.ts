@@ -15,9 +15,10 @@ async function emptyDiffText(report: ChangeReport): Promise<string> {
   const element = () => ({
     textContent: "", dataset: {}, clientWidth: 1000,
     append() {}, addEventListener() {}, replaceChildren() {},
+    querySelectorAll: () => [], querySelector: () => undefined,
     classList: { toggle() {} },
   });
-  const nodes = new Map(["main", "diffs", "file-list", "files-toggle", "outcome", "metadata", "file-count", "prompts", "wrap-lines"]
+  const nodes = new Map(["main", "diffs", "file-list", "files-toggle", "outcome", "metadata", "file-count", "prompts", "wrap-lines", "position", "prev-change", "next-change"]
     .map(id => [id, element()]));
   nodes.set("report-data", { ...element(), textContent: JSON.stringify(report) });
   runInNewContext(await readFile(new URL("../src/changes-page.js", import.meta.url), "utf8"), {
@@ -26,7 +27,9 @@ async function emptyDiffText(report: ChangeReport): Promise<string> {
       querySelector: element, querySelectorAll: () => [],
       createElement: element, addEventListener() {},
     },
-    window: { addEventListener() {} },
+    window: { addEventListener() {}, scrollY: 0, innerHeight: 800, scrollTo() {}, matchMedia: () => ({ matches: false }) },
+    performance: { now: () => 0 },
+    requestAnimationFrame: () => {},
     ResizeObserver: class { observe() {} },
   });
   return nodes.get("diffs")!.textContent;

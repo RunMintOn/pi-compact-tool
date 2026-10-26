@@ -152,11 +152,8 @@
   });
 
   const escape = text => text.replace(/[&<>]/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[char]);
-  // diff2html's parser keeps the leading +/-/space marker inside the content.
-  const lineText = line => {
-    const text = line.content ?? "";
-    return /^[-+ ]/.test(text) ? text.slice(1) : text;
-  };
+  // src/diff.ts already stripped the +/-/space marker, so content is the raw line.
+  const lineText = line => line.content ?? "";
   // Only the source markers are tinted; they stay visible because the markers
   // themselves are frequently what changed.
   function markdown(escaped) {
