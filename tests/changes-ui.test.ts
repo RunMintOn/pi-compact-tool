@@ -89,6 +89,9 @@ test("actual Pi session generates a linked report only at settlement without add
     session.sessionManager.appendMessage(final as any);
     await runner.emit({ type: "session_tree" });
     assert.match(stripTerminalSequences(answer.render(100).join("\n")), /View changes/);
+    await session.reload();
+    assert.ok(answer.render(100).join("\n").includes(url));
+    assert.ok(new AssistantMessageComponent(final as any, true).render(100).join("\n").includes(url));
   } finally {
     await (session as any)._extensionRunner.emit({ type: "session_shutdown", reason: "exit" });
     session.dispose();
@@ -113,7 +116,7 @@ test("/changes waits for settlement and opens the latest report with argv; launc
   const notices: string[] = [];
   const ctx = {
     cwd, hasUI: true, mode: "tui", ui: { theme, notify(text: string) { notices.push(text); } },
-    sessionManager: { buildContextEntries: () => [] }, waitForIdle: async () => {},
+    sessionManager: { buildContextEntries: () => [], getBranch: () => [] }, waitForIdle: async () => {},
   };
   const emit = async (name: string, event = {}) => { for (const handler of handlers.get(name) ?? []) await handler(event, ctx); };
   await commands.get("changes").handler("", ctx);

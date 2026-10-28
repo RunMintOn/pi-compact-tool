@@ -1,7 +1,9 @@
 import { getAgentDir, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { ChangeTracker, type ChangeOutcome } from "./src/changes.ts";
+import { constants } from "node:fs";
+import { access, stat } from "node:fs/promises";
+import { CHANGES_ENTRY, ChangeTracker, type ChangeOutcome, type ChangeRecord } from "./src/changes.ts";
 import { ACTIVITY_ENTRY, ActivityProjection, installActivityUI } from "./src/activity.ts";
 import { createDisplayTools } from "./src/tools.ts";
 import { getDisplayStyle, refreshDisplayRows, resetDisplayState, setDisplayPreferences, setDisplayStyle, type DisplayPreferences, type DisplayStyle } from "./src/state.ts";
@@ -46,6 +48,10 @@ export default function compactToolExtension(pi: ExtensionAPI): void {
   const rebuild = (ctx: ExtensionContext) => {
     if (!enabled(ctx)) return;
     activity.rebuild(ctx.sessionManager.buildContextEntries());
+    // Reports follow the full active branch, not the compacted model context.
+    for (const report of changes.restore(ctx.sessionManager.getBranch())) {
+      if (report.finalKey) activity.setChanges(report.finalKey, { label: "View changes", url: pathToFileURL(report.path).href });
+    }
     refreshDisplayRows();
   };
 
@@ -89,6 +95,13 @@ export default function compactToolExtension(pi: ExtensionAPI): void {
       const path = changes.latestPage;
       if (!path) {
         ctx.ui.notify("No change report in this session yet.", "info");
+        return;
+      }
+      try {
+        await access(path, constants.R_OK);
+        if (!(await stat(path)).isFile()) throw new Error("Not a regular file");
+      } catch {
+        ctx.ui.notify(`Change report is missing or unreadable: ${path}`, "warning");
         return;
       }
       try {
@@ -159,6 +172,7 @@ export default function compactToolExtension(pi: ExtensionAPI): void {
       if (report) {
         if (report.files.length || report.incomplete) {
           const path = await changes.save(report, join(getAgentDir(), "extension-data", "pi-compact-tool", "changes"));
+          pi.appendEntry(CHANGES_ENTRY, { path, finalKey: timing.finalKey } satisfies ChangeRecord);
           if (timing.finalKey) activity.setChanges(timing.finalKey, { label: "View changes", url: pathToFileURL(path).href });
         } else if (timing.finalKey) activity.setChanges(timing.finalKey, { label: "No net changes" });
         refreshDisplayRows();

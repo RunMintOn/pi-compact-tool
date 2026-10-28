@@ -54,7 +54,7 @@ async function fixture() {
   } as any);
   const ctx = {
     cwd, hasUI: true, mode: "tui", ui: { theme, notify: (message: string) => notices.push(message), custom: menu.custom },
-    sessionManager: { buildContextEntries: () => [] }, waitForIdle: async () => {},
+    sessionManager: { buildContextEntries: () => [], getBranch: () => [] }, waitForIdle: async () => {},
   };
   const emit = async (name: string, event = {}) => handlers.get(name)!(event, ctx);
   await emit("session_start");

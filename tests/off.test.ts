@@ -24,7 +24,7 @@ test("off startup and repeated live switching restore native rows and skip activ
   const ctx = {
     cwd, hasUI: true, mode: "tui",
     ui: { theme: {} as any, notify() {}, custom: menu.custom },
-    sessionManager: { buildContextEntries: () => [] },
+    sessionManager: { buildContextEntries: () => [], getBranch: () => [] },
   };
   extension({
     getSettings: () => ({}),

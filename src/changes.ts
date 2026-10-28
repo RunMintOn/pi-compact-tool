@@ -7,6 +7,8 @@ import { renderChangesPage } from "./changes-page.ts";
 
 export const MAX_SNAPSHOT_BYTES = 1024 * 1024;
 const MAX_RUN_BYTES = 16 * MAX_SNAPSHOT_BYTES;
+export const CHANGES_ENTRY = "compact-tool.changes.v1";
+export interface ChangeRecord { path: string; finalKey?: string; }
 export type ChangeOutcome = "completed" | "aborted" | "error";
 export interface ChangedFile {
   path: string;
@@ -82,6 +84,19 @@ function fileChange(path: string, before: Snapshot, after: Snapshot): ChangedFil
 export class ChangeTracker {
   private current?: Run;
   latestPage?: string;
+
+  restore(entries: readonly { type: string; customType?: string; data?: unknown }[]): ChangeRecord[] {
+    const reports: ChangeRecord[] = [];
+    for (const entry of entries) {
+      if (entry.type !== "custom" || entry.customType !== CHANGES_ENTRY) continue;
+      const data = entry.data as Partial<ChangeRecord> | undefined;
+      if (!data || typeof data.path !== "string" || !isAbsolute(data.path)) continue;
+      if (data.finalKey !== undefined && typeof data.finalKey !== "string") continue;
+      reports.push({ path: data.path, finalKey: data.finalKey });
+    }
+    this.latestPage = reports.at(-1)?.path;
+    return reports;
+  }
 
   start(cwd: string, now: number): void {
     this.current ??= { cwd, start: now, prompts: [], files: new Map(), bytes: 0 };

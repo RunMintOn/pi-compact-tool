@@ -87,6 +87,8 @@ Aggregate's first statistics line adds **View changes** after the tool counts. N
 /changes             Open the latest generated report from this session
 ```
 
+New reports are linked to their tasks in the session record. After `/resume`, switching sessions or `/reload`, `/changes` opens the latest generated report on the current conversation branch, and historical statistics rows restore their own **View changes** links. Context compaction does not discard these associations. If the latest report is missing or unreadable, `/changes` reports its path without opening an older report. Sessions without saved report associations keep the **No change report in this session yet** message; existing HTML files are not scanned or migrated.
+
 The command waits for the active task to settle before opening the system browser. If browser launch fails, it prints the report's file URL.
 
 Reports include the complete user message text in a collapsed **User message** section, any additional user messages observed in the same run, start/end times, completion state, net file counts and line totals. **Unified** is the default; **Split** puts the old and new side of each changed line next to each other and is disabled below 720 px of diff width. Switching layouts preserves the current file. **wrap** is on by default and folds long lines; turning it off scrolls inside each hunk instead of widening the page. At narrow widths the file list opens through **Files**. Page colors follow the browser/system light or dark preference.
