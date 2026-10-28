@@ -1,27 +1,47 @@
 {
-  "name": "pi-compact-tool",
+  "name": "@runminton/pi-compact-tool",
   "version": "0.1.0",
   "description": "Compact parallel tool records and request statistics for Pi, with switchable tidy/Claude styles and official execution.",
   "type": "module",
   "license": "MIT",
+  "author": "RunMintOn (https://github.com/RunMintOn)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RunMintOn/pi-compact-tool.git"
+  },
+  "homepage": "https://github.com/RunMintOn/pi-compact-tool#readme",
+  "bugs": {
+    "url": "https://github.com/RunMintOn/pi-compact-tool/issues"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  },
   "keywords": ["pi-package", "pi-extension", "tool-rendering"],
-  "pi": { "extensions": ["./index.ts"], "skills": ["./skills"] },
+  "pi": {
+    "extensions": ["./index.ts"],
+    "skills": ["./skills"],
+    "image": "https://raw.githubusercontent.com/RunMintOn/pi-compact-tool/main/assets/preview.png"
+  },
   "exports": {
     ".": "./index.ts",
     "./display": "./src/display.ts"
   },
-  "files": ["index.ts", "src", "skills", "README.md", "README.zh-CN.md", "LICENSE"],
+  "files": ["index.ts", "src", "skills", "README.md", "README.zh-CN.md", "CHANGELOG.md", "LICENSE"],
   "scripts": {
     "test": "node scripts/run-tests.mjs",
     "test:tui": "node scripts/check-tui.mjs",
     "test:display-tui": "node scripts/check-display-tui.mjs",
     "test:changes-ui": "bash scripts/check-changes-page.sh",
     "typecheck": "tsc --noEmit",
-    "check": "npm run typecheck && npm test"
+    "check": "npm run typecheck && npm test",
+    "prepublishOnly": "npm run check"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": ">=0.99.1 <1",
-    "@earendil-works/pi-tui": ">=0.99.1 <1",
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*",
     "typebox": "*"
   },
   "devDependencies": {

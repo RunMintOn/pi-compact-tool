@@ -43,7 +43,7 @@ description: 为 Pi 工具接入 pi-compact-tool 的紧凑渲染。用户要求�
 复用现有注册入口：
 
 ```ts
-import { decorateTool } from "pi-compact-tool/display";
+import { decorateTool } from "@runminton/pi-compact-tool/display";
 
 pi.registerTool(decorateTool(existingTool, {
   kind: "search",
@@ -56,7 +56,7 @@ pi.registerTool(decorateTool(existingTool, {
 ```
 
 示例字段只适用于提供这些字段的搜索工具。按已确认的目标工具数据编写 adapter。
-确认工具插件能够解析 `pi-compact-tool/display`；直接使用本地源码时，使用实际的 `src/display.ts` 路径。
+确认工具插件能够解析 `@runminton/pi-compact-tool/display`；直接使用本地源码时，使用实际的 `src/display.ts` 路径。
 跨包引用按用户项目的依赖配置处理，避免写入开发者机器的绝对路径。
 
 `decorateTool()` 会替换原有 renderer。需要保留特殊 diff、按钮或其他交互时，先检查原实现，

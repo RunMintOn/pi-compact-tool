@@ -1,6 +1,6 @@
-# pi-compact-tool (Project Three)
+# @runminton/pi-compact-tool
 
-[简体中文](./README.zh-CN.md)
+[简体中文](https://github.com/RunMintOn/pi-compact-tool/blob/main/README.zh-CN.md)
 
 Switch between three tool display styles in Pi's TUI. Inspired by `pi-tidy-tools` (Project One) and [`pi-tool-display-intent`](https://github.com/zhcsyncer/pi-extensions/tree/main/packages/pi-tool-display-intent) (Reference Two). This is an independent implementation; neither reference extension is loaded.
 
@@ -13,11 +13,54 @@ Switch between three tool display styles in Pi's TUI. Inspired by `pi-tidy-tools
 - Images retain Pi's native rendering and do not follow text expansion.
 - Aggregate Bash always shows received text line counts, including failures and empty output. Failed tool names and targets turn red without error text; counts and other summary suffixes stay muted. Expand for the full error. Tidy/Claude keep their original error summaries.
 
-## Try it
+## Preview
 
-Requires Pi **0.99.1 or a newer 0.x release**.
+<table>
+  <tr>
+    <td width="50%"><img src="https://raw.githubusercontent.com/RunMintOn/pi-compact-tool/main/assets/tui.png" alt="aggregate display with codemode groups and final statistics" width="420"></td>
+    <td width="50%"><img src="https://raw.githubusercontent.com/RunMintOn/pi-compact-tool/main/assets/changes.png" alt="change report with file list and word-level diff" width="420"></td>
+  </tr>
+</table>
 
-From this directory:
+## Install
+
+Requires Pi **1.4.0 or newer**; 1.4.0 is the validated version.
+
+```bash
+pi install npm:@runminton/pi-compact-tool                    # npm
+pi install git:github.com/RunMintOn/pi-compact-tool          # git, follows the default branch
+pi install git:github.com/RunMintOn/pi-compact-tool@v0.1.0   # git, pinned to a release
+```
+
+Start Pi and open `/tools` to choose a display style. Do not load the same package a second time with `-e`.
+
+### Update and remove
+
+```bash
+pi list                                           # configured packages
+pi update --extensions                            # reconcile installed packages
+pi remove npm:@runminton/pi-compact-tool          # remove the package and its settings entry
+```
+
+### Skill
+
+`pi.extensions` loads only `index.ts`. The adapter skill in `skills/pi-compact-tool-adapter` loads when the package is installed as a Pi package, from npm, git or a local directory. Loading a single file with `-e ./index.ts` does not load it.
+
+```text
+/skill:pi-compact-tool-adapter Adapt my custom tool's compact rendering
+```
+
+To keep the extension but keep the skill away from the agent, filter it in Pi settings:
+
+```json
+{ "source": "npm:@runminton/pi-compact-tool", "skills": [] }
+```
+
+`pi config` offers the same switch interactively.
+
+### Try without installing
+
+From a checkout:
 
 ```bash
 pi -ne -e ./index.ts --tui-mode fullscreen
@@ -103,7 +146,7 @@ The report covers **files touched by this extension's Edit / Write tools or the 
 
 If any `apply_patch` call fails or is interrupted, committed changes remain visible and the report shows one **Records may be incomplete** notice at the top. Even if no changes could be confirmed or no paths could be parsed, a warning report is generated rather than claiming No net changes. A later successful retry does not remove that task's warning; the next task starts clean.
 
-HTML reports are saved below `getAgentDir()/extension-data/pi-compact-tool/changes/` (normally `~/.pi/agent/extension-data/pi-compact-tool/changes/`). They contain inline jsdiff assets and need neither a server nor network access. Only HTML is retained; source snapshots are released after settlement. Links and the latest-report association are kept in memory for the current session/runtime; reload/session replacement does not restore them. Existing HTML files remain usable and are not automatically removed. Runs observed before this feature was loaded cannot be reconstructed. If all observed files return to their original state and no patch failed, the first line shows **No net changes** and no new report is generated.
+HTML reports are saved below `getAgentDir()/extension-data/pi-compact-tool/changes/` (normally `~/.pi/agent/extension-data/pi-compact-tool/changes/`). They contain inline jsdiff assets and need neither a server nor network access. Only HTML is retained; source snapshots are released after settlement. Existing HTML files remain usable and are not automatically removed. Runs observed before this feature was loaded cannot be reconstructed. If all observed files return to their original state and no patch failed, the first line shows **No net changes** and no new report is generated.
 
 ## Grouping and statistics
 
@@ -133,7 +176,7 @@ Unfinished tools use Pi's native gray `toolPendingBg` from argument generation t
 
 Pi keeps ownership of image protocols, display settings and conversion. An image can remain visible while its text result is collapsed, matching native Pi behavior. Actual pixel display depends on terminal support and Pi settings. In aggregate mode, images remain after their owning tool. A colored bottom-padding row closes the text panel before the image; if more tools follow in the same region, a colored top-padding row resumes the panel. Existing section padding is reused. Images are not relocated to the end of the tool region.
 
-Aggregate caches painted text layout and hidden-thinking region IDs to avoid repeated truncation, coloring and filtering on each frame. Image protocols, conversion, uploads and native image caches are unchanged. See [display/performance validation](./checks/display-preferences-validation.md) for a 300-PNG fullscreen CPU comparison and its limits: real terminal image decoding/painting and perceived scroll latency were not measured.
+Aggregate caches painted text layout and hidden-thinking region IDs to avoid repeated truncation, coloring and filtering on each frame. Image protocols, conversion, uploads and native image caches are unchanged. See [display/performance validation](https://github.com/RunMintOn/pi-compact-tool/blob/main/checks/display-preferences-validation.md) for a 300-PNG fullscreen CPU comparison and its limits: real terminal image decoding/painting and perceived scroll latency were not measured.
 
 ## Custom tools
 
@@ -151,12 +194,12 @@ FFF rows show pattern, path and `totalMatched` counts (matches for ffgrep, files
 
 Apply Patch rows show patch file paths and move destinations, then file counts and actual additions/deletions from `details.changes`. Legacy results fall back to output file counts without guessing applied line counts from the requested patch. Expansion retains native diffs and diagnostics, or full text output when no native result renderer exists. Separately from this display adapter, execution events capture patch paths for the shared `/changes` report described above.
 
-Native Apply Patch details are rendered once inside the existing shell. Aggregate's painted-layout cache includes those details, avoiding full-output repainting on every scroll frame. Combined-plugin regression, move-display and performance results are recorded in [Apply Patch validation](./checks/apply-patch-validation.md).
+Native Apply Patch details are rendered once inside the existing shell. Aggregate's painted-layout cache includes those details, avoiding full-output repainting on every scroll frame. Combined-plugin regression, move-display and performance results are recorded in [Apply Patch validation](https://github.com/RunMintOn/pi-compact-tool/blob/main/checks/apply-patch-validation.md).
 
 Other custom tools retain their renderer unless opted in. Wrap the definition at its original registration site:
 
 ```ts
-import { decorateTool } from "pi-compact-tool/display";
+import { decorateTool } from "@runminton/pi-compact-tool/display";
 
 pi.registerTool(decorateTool(existingTool));
 ```
@@ -185,7 +228,7 @@ This version does not include whole-Run collapse, a separate detail popup, model
 
 ## Local checks
 
-See [lifecycle validation](./checks/activity-lifecycle-validation.md) for settled statistics, live thinking and pending-background fixes.
+See [lifecycle validation](https://github.com/RunMintOn/pi-compact-tool/blob/main/checks/activity-lifecycle-validation.md) for settled statistics, live thinking and pending-background fixes.
 
 ```bash
 npm install --ignore-scripts --legacy-peer-deps
@@ -197,4 +240,4 @@ npm run test:changes-ui  # requires ego-browser; saves HTML, results and screens
 
 Development requires Pi's host packages and `typebox` to resolve locally. Validation on this machine uses symlinks to the existing Pi installation, without installing a second Pi copy.
 
-See [display/performance validation](./checks/display-preferences-validation.md) for the new preferences and multi-image diagnostics. See [changes validation](./checks/changes-validation.md) for net-diff tests and browser checks. See [polish validation](./checks/polish-validation.md) for spacing refinements, automatic custom adapters, 42 tests and real fullscreen checks. The earlier unified-panel implementation is recorded in [thinking validation](./checks/thinking-validation.md). Earlier parallel headings are recorded in [layout validation](./checks/parallel-heading-validation.md). Earlier background and padding changes are recorded in [visual fix validation](./checks/visual-fix-validation.md). The [first aggregate validation](./checks/aggregate-validation.md) is retained. The [original validation notes](./checks/project-3-validation.md) are retained for the previous per-tool implementation. Licensed under [MIT](./LICENSE).
+See [display/performance validation](https://github.com/RunMintOn/pi-compact-tool/blob/main/checks/display-preferences-validation.md) for the new preferences and multi-image diagnostics. See [changes validation](https://github.com/RunMintOn/pi-compact-tool/blob/main/checks/changes-validation.md) for net-diff tests and browser checks. See [polish validation](https://github.com/RunMintOn/pi-compact-tool/blob/main/checks/polish-validation.md) for spacing refinements, automatic custom adapters, 42 tests and real fullscreen checks. The earlier unified-panel implementation is recorded in [thinking validation](https://github.com/RunMintOn/pi-compact-tool/blob/main/checks/thinking-validation.md). Earlier parallel headings are recorded in [layout validation](https://github.com/RunMintOn/pi-compact-tool/blob/main/checks/parallel-heading-validation.md). Earlier background and padding changes are recorded in [visual fix validation](https://github.com/RunMintOn/pi-compact-tool/blob/main/checks/visual-fix-validation.md). The [first aggregate validation](https://github.com/RunMintOn/pi-compact-tool/blob/main/checks/aggregate-validation.md) is retained. The [original validation notes](https://github.com/RunMintOn/pi-compact-tool/blob/main/checks/project-3-validation.md) are retained for the previous per-tool implementation. Licensed under [MIT](https://github.com/RunMintOn/pi-compact-tool/blob/main/LICENSE).

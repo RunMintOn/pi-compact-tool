@@ -1,6 +1,6 @@
-# pi-compact-tool（项目三）
+# @runminton/pi-compact-tool
 
-[English](./README.md)
+[English](https://github.com/RunMintOn/pi-compact-tool/blob/main/README.md)
 
 在 Pi TUI 中快速切换三套工具展示。样式参考 `pi-tidy-tools`（项目一）和 [`pi-tool-display-intent`](https://github.com/zhcsyncer/pi-extensions/tree/main/packages/pi-tool-display-intent)（参考二），本项目独立实现，不加载这两个扩展。
 
@@ -13,11 +13,54 @@
 - 图片继续由 Pi 原生图片层显示，不随文字展开／收起。
 - aggregate 的 Bash 成功、失败均显示文字结果行数；无输出显示 `0 lines`。失败时工具名和目标变红，行数等摘要保持浅灰色，收起时不显示错误正文，展开查看完整错误。tidy / claude 保持原错误摘要。
 
-## 试用
+## 预览
 
-需要 Pi **0.99.1 或更新的 0.x 版本**。
+<table>
+  <tr>
+    <td width="50%"><img src="https://raw.githubusercontent.com/RunMintOn/pi-compact-tool/main/assets/tui.png" alt="aggregate 展示：codemode 分组与末尾统计" width="420"></td>
+    <td width="50%"><img src="https://raw.githubusercontent.com/RunMintOn/pi-compact-tool/main/assets/changes.png" alt="修改报告：文件列表与词级 diff" width="420"></td>
+  </tr>
+</table>
 
-在项目目录执行：
+## 安装
+
+需要 Pi **1.4.0 或更新版本**，当前验证版本为 1.4.0。
+
+```bash
+pi install npm:@runminton/pi-compact-tool                    # npm
+pi install git:github.com/RunMintOn/pi-compact-tool          # git，跟随默认分支
+pi install git:github.com/RunMintOn/pi-compact-tool@v0.1.0   # git，固定到某个发布版本
+```
+
+启动 Pi 后打开 `/tools` 选择展示风格。不要再用 `-e` 重复加载同一个包。
+
+### 更新与卸载
+
+```bash
+pi list                                           # 查看已配置的包
+pi update --extensions                            # 同步已安装的包
+pi remove npm:@runminton/pi-compact-tool          # 删除包及其设置条目
+```
+
+### Skill
+
+`pi.extensions` 只加载 `index.ts`。适配用的 skill（`skills/pi-compact-tool-adapter`）只有在以 Pi 包方式安装时才加载，来源可以是 npm、git 或本地目录；用 `-e ./index.ts` 单独加载扩展文件时不会加载它。
+
+```text
+/skill:pi-compact-tool-adapter 给我的自定义工具适配紧凑渲染
+```
+
+想保留扩展但不让 Agent 使用这个 skill，可在 Pi 设置里过滤：
+
+```json
+{ "source": "npm:@runminton/pi-compact-tool", "skills": [] }
+```
+
+`pi config` 提供同样的开关。
+
+### 不安装直接试用
+
+在仓库目录执行：
 
 ```bash
 pi -ne -e ./index.ts --tui-mode fullscreen
@@ -103,7 +146,7 @@ aggregate 统计第一行在工具枚举后显示 **View changes**。宽度不�
 
 本轮任意 `apply_patch` 失败或被中止后，已落盘修改仍会展示，页面顶部只显示一次 **Records may be incomplete（记录可能不完整）** 提示。即使没有可确认的修改或无法解析任何路径，也生成带提示的报告，不显示确定的 No net changes。同轮重试成功不移除此提示；下一轮重新记录。
 
-页面保存在 `getAgentDir()/extension-data/pi-compact-tool/changes/`，通常为 `~/.pi/agent/extension-data/pi-compact-tool/changes/`。jsdiff 的脚本内嵌，不需要服务器或联网。仅保存 HTML，结算后释放源文件快照。链接关联和最近页面路径只保存在当前会话／运行的内存中；reload 或切换会话后不恢复。已有 HTML 仍可手动打开，不自动清理。功能加载前的轮次无法补造完整 diff。如果所有文件恢复原样且没有补丁失败，第一行显示 **No net changes**，不生成新页面。
+页面保存在 `getAgentDir()/extension-data/pi-compact-tool/changes/`，通常为 `~/.pi/agent/extension-data/pi-compact-tool/changes/`。jsdiff 的脚本内嵌，不需要服务器或联网。仅保存 HTML，结算后释放源文件快照。已有 HTML 仍可手动打开，不自动清理。功能加载前的轮次无法补造完整 diff。如果所有文件恢复原样且没有补丁失败，第一行显示 **No net changes**，不生成新页面。
 
 ## 分组与统计
 
@@ -127,7 +170,7 @@ aggregate 统计第一行在工具枚举后显示 **View changes**。宽度不�
 
 保留 Pi 的图片协议、显示开关和转换行为。文字收起时图片仍可能显示；这和 Pi 原生行为一致。图片像素是否能显示，取决于终端支持和 Pi 的图片设置。aggregate 中图片仍位于所属工具后面：图片前补一行同底色底部留白，图片后还有同区域工具时补一行顶部留白；复用已有分段留白，不重复添加。没有将图片集中移到工具区域末尾。
 
-针对多图滚动增加了 aggregate 文字排版缓存和隐藏 thinking 的区域节点缓存，避免每帧重复截断、着色及过滤。没有修改图片协议、转换、上传或原生缓存。300 张 PNG 的本地 fullscreen CPU 对照及限制见 [展示与性能验证](./checks/display-preferences-validation.md)；测量不包含真实终端的图片解码和绘制，不能据此认定所有滑动卡顿已消除。
+针对多图滚动增加了 aggregate 文字排版缓存和隐藏 thinking 的区域节点缓存，避免每帧重复截断、着色及过滤。没有修改图片协议、转换、上传或原生缓存。300 张 PNG 的本地 fullscreen CPU 对照及限制见 [展示与性能验证](https://github.com/RunMintOn/pi-compact-tool/blob/main/checks/display-preferences-validation.md)；测量不包含真实终端的图片解码和绘制，不能据此认定所有滑动卡顿已消除。
 
 ## 自定义工具
 
@@ -146,12 +189,12 @@ skill 指导 Agent 检查实际工具数据、选择接入位置、保留展开�
 - `codemode` 默认收起显示代码首行和内部调用数；aggregate 的 B 模式另显示完整原生内部调用区域。无内部调用时显示脚本输出行数，不计原生状态头。展开保留原生完整脚本、内部调用状态与输出。统计仍只计顶层 codemode 调用，内部调用不冒充独立 parallel 组。
 - 不自动启用这些工具。其他未接入工具保持原 renderer。
 
-Apply Patch 的原生展开正文只在现有外壳中渲染一次，并纳入 aggregate 的文字排版缓存，不再每个滚动帧处理整份输出。双插件回归、移动展示和性能测量见 [Apply Patch 验证](./checks/apply-patch-validation.md)。
+Apply Patch 的原生展开正文只在现有外壳中渲染一次，并纳入 aggregate 的文字排版缓存，不再每个滚动帧处理整份输出。双插件回归、移动展示和性能测量见 [Apply Patch 验证](https://github.com/RunMintOn/pi-compact-tool/blob/main/checks/apply-patch-validation.md)。
 
 其他自定义工具需要接管展示时，在原有 `pi.registerTool()` 处包装工具定义：
 
 ```ts
-import { decorateTool } from "pi-compact-tool/display";
+import { decorateTool } from "@runminton/pi-compact-tool/display";
 
 pi.registerTool(decorateTool(existingTool));
 ```
@@ -180,7 +223,7 @@ pi.registerTool(decorateTool(existingSearchTool, {
 
 ## 本地验证
 
-本次连续任务统计、thinking 和 pending 背景修复见 [生命周期验证](./checks/activity-lifecycle-validation.md)。
+本次连续任务统计、thinking 和 pending 背景修复见 [生命周期验证](https://github.com/RunMintOn/pi-compact-tool/blob/main/checks/activity-lifecycle-validation.md)。
 
 ```bash
 npm install --ignore-scripts --legacy-peer-deps
@@ -192,4 +235,4 @@ npm run test:changes-ui  # 需要 ego-browser，HTML、结果和截图保存在 
 
 开发环境需让本项目能解析 Pi 宿主包和 `typebox`。本机验证使用已有 Pi 安装的软链接，未另外安装一份 Pi。
 
-本次展示偏好及多图性能检查见 [展示与性能验证](./checks/display-preferences-validation.md)。本轮净 diff 测试和浏览器检查见 [修改查看验证](./checks/changes-validation.md)。当前布局细调、自定义工具接入、42 项测试与真实 fullscreen 检查见 [本轮验证记录](./checks/polish-validation.md)。此前 Think 融合见 [Think 验证记录](./checks/thinking-validation.md)。此前左对齐与分组标题见 [布局验证记录](./checks/parallel-heading-validation.md)。此前底色与留白修复见 [视觉修复记录](./checks/visual-fix-validation.md)。第一版聚合实现保留在 [聚合验证记录](./checks/aggregate-validation.md)。原逐条版本的验证保留在 [历史验证记录](./checks/project-3-validation.md)。MIT 许可证见 [LICENSE](./LICENSE)。
+本次展示偏好及多图性能检查见 [展示与性能验证](https://github.com/RunMintOn/pi-compact-tool/blob/main/checks/display-preferences-validation.md)。本轮净 diff 测试和浏览器检查见 [修改查看验证](https://github.com/RunMintOn/pi-compact-tool/blob/main/checks/changes-validation.md)。当前布局细调、自定义工具接入、42 项测试与真实 fullscreen 检查见 [本轮验证记录](https://github.com/RunMintOn/pi-compact-tool/blob/main/checks/polish-validation.md)。此前 Think 融合见 [Think 验证记录](https://github.com/RunMintOn/pi-compact-tool/blob/main/checks/thinking-validation.md)。此前左对齐与分组标题见 [布局验证记录](https://github.com/RunMintOn/pi-compact-tool/blob/main/checks/parallel-heading-validation.md)。此前底色与留白修复见 [视觉修复记录](https://github.com/RunMintOn/pi-compact-tool/blob/main/checks/visual-fix-validation.md)。第一版聚合实现保留在 [聚合验证记录](https://github.com/RunMintOn/pi-compact-tool/blob/main/checks/aggregate-validation.md)。原逐条版本的验证保留在 [历史验证记录](https://github.com/RunMintOn/pi-compact-tool/blob/main/checks/project-3-validation.md)。MIT 许可证见 [LICENSE](https://github.com/RunMintOn/pi-compact-tool/blob/main/LICENSE)。
