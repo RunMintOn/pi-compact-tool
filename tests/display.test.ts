@@ -11,6 +11,10 @@ import { testPng } from "./helpers/image.ts";
 import { decorateTool } from "../src/display.ts";
 import { resetDisplayState, setDisplayStyle, setToolColor, type DisplayContext } from "../src/state.ts";
 
+// The theme resolves its color mode from the terminal environment. Pin it so the
+// assertions below do not depend on the caller exporting COLORTERM.
+process.env.COLORTERM ??= "truecolor";
+
 initTheme("dark", false);
 const theme = { fg: (_: string, text: string) => text, bg: (_: string, text: string) => text, bold: (text: string) => text } as unknown as Theme;
 const plain = (text: string) => text.replace(/\x1b\[[0-9;:]*m/g, "");

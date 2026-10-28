@@ -10,6 +10,10 @@ import { getDisplayPreferences, getToolColor } from "../src/state.ts";
 import { decorateTool } from "../src/display.ts";
 import { loadPreferences } from "../src/preferences.ts";
 
+// The theme resolves its color mode from the terminal environment. Pin it so the
+// assertions below do not depend on the caller exporting COLORTERM.
+process.env.COLORTERM ??= "truecolor";
+
 const { createCodemodeToolDefinition } = await import(new URL("./extensions/codemode/tool.js", import.meta.resolve("@earendil-works/pi-coding-agent")).href);
 
 test("legacy preferences retain display choices while missing or invalid colors fall back to blue and amber", async () => {
